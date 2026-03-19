@@ -1,0 +1,39 @@
+{
+    "dockerComposeFile": [
+        "./docker-compose.yml"
+    ],
+    "service": "asciidoc",
+    "workspaceFolder": "/workspace",
+    "overrideCommand": true,
+    "remoteUser": "root",
+    "forwardPorts": [4000],
+    "portsAttributes": {
+        "4000": {
+            "label": "Docs Preview Server",
+            "onAutoForward": "notify"
+        }
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "asciidoctor.asciidoctor-vscode",
+                "joaompinto.vscode-graphviz",
+                "hediet.vscode-drawio",
+                "jebbs.plantuml"
+            ],
+            "settings": {
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "editor.tabSize": 2,
+                "editor.insertSpaces": true,
+                "editor.wordWrap": "on",
+                "editor.rulers": [120],
+                "files.associations": {
+                    "*.adoc": "asciidoc",
+                    "*.asciidoc": "asciidoc"
+                },
+                "asciidoc.extensions.enableKroki": true,
+                "asciidoc.asciidoctorpdf.command": "asciidoctor-pdf"
+            }
+        }
+    }
+}

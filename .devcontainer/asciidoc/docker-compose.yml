@@ -1,0 +1,9 @@
+services:
+  asciidoc:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../../asciidoc:/workspace
+    working_dir: /workspace
+    command: sleep infinity
