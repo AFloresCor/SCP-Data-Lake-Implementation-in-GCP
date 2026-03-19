@@ -1,0 +1,3889 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?asciidoc-toc maxdepth="3"?>
+<?asciidoc-numbered maxdepth="3"?>
+<book xmlns="http://docbook.org/ns/docbook" xmlns:xl="http://www.w3.org/1999/xlink" version="5.0" xml:lang="en">
+<info>
+<title>GCP Data Lake</title>
+<subtitle>Architecture, Implementation &amp; Recommendations</subtitle>
+<date>2026-03-19</date>
+</info>
+<preface>
+<title></title>
+<simpara><?asciidoc-hr?></simpara>
+</preface>
+<preface xml:id="preface">
+<title>Preface</title>
+<section xml:id="_about_this_document">
+<title>About This Document</title>
+<important>
+<simpara><emphasis role="strong">DISCLAIMER</emphasis> Some information has been redacted for confidentiality. Technical details can differ from the real implementation due to various constraints, but the core narrative remains accurate.</simpara>
+</important>
+<simpara>This document presents the full story of the <emphasis role="strong">GCP Data Lake Initiative</emphasis> — from the business
+problem at <emphasis role="strong">"Anonymous Company"</emphasis> that motivated it, through the technical solution designed and built on
+Google Cloud Platform, to the lessons learned and the path forward.</simpara>
+<simpara>This document is intentionally written for <emphasis role="strong">multiple audiences</emphasis>:</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="20*"/>
+<colspec colname="col_2" colwidth="40*"/>
+<colspec colname="col_3" colwidth="40*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Audience</entry>
+<entry align="left" valign="top">What You Will Find</entry>
+<entry align="left" valign="top">Recommended Sections</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Executives &amp; Sponsors</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Strategic value, outcomes, cost, and risk</simpara></entry>
+<entry align="left" valign="top"><simpara>Executive Summary, Project Background, Solution Overview, Cost Analysis, Roadmap</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Project &amp; Product Managers</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Scope, timeline, key decisions, trade-offs</simpara></entry>
+<entry align="left" valign="top"><simpara>Project Background, Solution Overview, Architecture, Roadmap</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Data Analysts &amp; Scientists</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Data availability, quality, access patterns, tooling</simpara></entry>
+<entry align="left" valign="top"><simpara>Solution Overview, Data Lake Design, GCP Services, Recommendations</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Data &amp; Cloud Engineers</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Technical architecture, pipelines, configuration, code</simpara></entry>
+<entry align="left" valign="top"><simpara>Architecture, GCP Services, Data Lake Design, Implementation, Security &amp; Compliance</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Security &amp; Compliance Officers</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Data governance, access control, encryption, audit</simpara></entry>
+<entry align="left" valign="top"><simpara>Security &amp; Compliance, Recommendations</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_how_to_read_this_document">
+<title>How to Read This Document</title>
+<formalpara>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Business Overview</emphasis> sections provide concise, non-technical summaries.</title>
+<para>You can follow along by reading only those callout boxes if you prefer a high-level read.</para>
+</formalpara>
+<formalpara>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Technical Detail</emphasis> sections contain in-depth specifics for engineers and architects.</title>
+<para>These sections can be skipped without losing the overall narrative.</para>
+</formalpara>
+<formalpara>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Recommendation</emphasis> sections highlight key decisions and guidance that can be acted upon immediately.</title>
+<para>These are tips and best practices.</para>
+</formalpara>
+</section>
+<section xml:id="_document_revision_history">
+<title>Document Revision History</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="4">
+<colspec colname="col_1" colwidth="16.6666*"/>
+<colspec colname="col_2" colwidth="16.6666*"/>
+<colspec colname="col_3" colwidth="33.3333*"/>
+<colspec colname="col_4" colwidth="33.3335*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Version</entry>
+<entry align="left" valign="top">Date</entry>
+<entry align="left" valign="top">Author</entry>
+<entry align="left" valign="top">Summary of Changes</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>1.0</simpara></entry>
+<entry align="left" valign="top"><simpara>March 2026</simpara></entry>
+<entry align="left" valign="top"><simpara>Data Engineering Team</simpara></entry>
+<entry align="left" valign="top"><simpara>Initial release</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+</preface>
+<chapter xml:id="executive-summary">
+<title>Executive Summary</title>
+<simpara role="lead">The <emphasis role="strong">GCP Data Lake Initiative</emphasis> consolidates the organization&#8217;s data assets into a
+single, governed, and scalable platform on Google Cloud Platform, enabling faster
+decision-making, cost-efficient analytics, and a foundation for more complex data projects, including machine learning.</simpara>
+<section xml:id="_the_business_problem">
+<title>The Business Problem</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>Our data was scattered across dozens of isolated systems — departmental databases,
+third-party SaaS exports, and manual spreadsheets. Analysts spent up to <emphasis role="strong">60% of
+their time</emphasis> just locating and preparing data instead of generating insights.
+Leadership lacked a single, reliable source of truth for key business metrics.</simpara>
+<simpara>Aside from that, a new project was on the horizon that would require integrating data from hundreds of new sources.
+The existing data landscape was not only inefficient but also a barrier to innovation.</simpara>
+</sidebar>
+<simpara>Before this project, the organization faced three critical data challenges:</simpara>
+<orderedlist numeration="arabic">
+<listitem>
+<simpara><emphasis role="strong">Data Silos</emphasis> — Each business unit maintained its own data store with no cross-team
+visibility or shared governance.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Slow Time-to-Insight</emphasis> — Producing a consolidated report required days of manual
+data extraction and reconciliation.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Low innovation</emphasis> — The fragmented data landscape made it difficult to implement data-driven projects, especially
+those involving machine learning.</simpara>
+</listitem>
+</orderedlist>
+</section>
+<section xml:id="_the_solution">
+<title>The Solution</title>
+<simpara>We designed and implemented a centralized <emphasis role="strong">Data Lake</emphasis> on Google Cloud Platform using
+a multi-layer architecture (Bronze → Silver → Gold) that ingests raw data from all
+source systems, transforms it for quality and consistency, and serves curated datasets
+to analysts, dashboards, and machine learning workflows.</simpara>
+<simpara>New data sources can be onboarded in days instead of months, and business users have self-service access to trusted data.</simpara>
+</section>
+<section xml:id="_key_outcomes">
+<title>Key Outcomes</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="2">
+<colspec colname="col_1" colwidth="25*"/>
+<colspec colname="col_2" colwidth="75*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Outcome</entry>
+<entry align="left" valign="top">Result</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>Unified Data Platform</simpara></entry>
+<entry align="left" valign="top"><simpara>100% of priority data sources ingested and catalogued in a single environment.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Faster Insights</simpara></entry>
+<entry align="left" valign="top"><simpara>Report generation time reduced from days to minutes.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Data Quality</simpara></entry>
+<entry align="left" valign="top"><simpara>Automated quality checks catch and quarantine bad data before it reaches consumers.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Self-Service Analytics</simpara></entry>
+<entry align="left" valign="top"><simpara>Analysts and data scientists can explore curated data without waiting on engineering.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Governance &amp; Compliance</simpara></entry>
+<entry align="left" valign="top"><simpara>Centralized access control, lineage tracking, and audit logs across all datasets.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_strategic_value">
+<title>Strategic Value</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>This platform is not just a storage system — it is a <emphasis role="strong">strategic data asset</emphasis>
+that accelerates every team that depends on data. It is the basis on which <emphasis role="strong">"Anonymous Company"</emphasis>
+can build complex data projects, ride the wave of AI, and maintain a competitive edge in the market.</simpara>
+</sidebar>
+<simpara>The data lake delivers compounding value over time:</simpara>
+<itemizedlist>
+<listitem>
+<simpara><emphasis role="strong">Short-term</emphasis> — Eliminate manual data wrangling and reduce reporting backlog.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Medium-term</emphasis> — Enable cross-domain and multi-source analytics that were previously impossible.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Long-term</emphasis> — Provide the data foundation for predictive analytics and AI-driven products.</simpara>
+</listitem>
+</itemizedlist>
+</section>
+<section xml:id="_summary_of_investment">
+<title>Summary of Investment</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="2">
+<colspec colname="col_1" colwidth="33.3333*"/>
+<colspec colname="col_2" colwidth="66.6667*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Item</entry>
+<entry align="left" valign="top">Details</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>Cloud Provider</simpara></entry>
+<entry align="left" valign="top"><simpara>Google Cloud Platform (GCP)</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Core Services</simpara></entry>
+<entry align="left" valign="top"><simpara>Cloud Storage, BigQuery, Dataflow, Dataform, Composer, Pub/Sub, Cloud Run, Dataplex, IAM</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Team</simpara></entry>
+<entry align="left" valign="top"><simpara>2 Data Engineers, 1 Cloud Architect, 1 Data Analyst</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Timeline</simpara></entry>
+<entry align="left" valign="top"><simpara>6 months (planning through production go-live)</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Estimated Annual Cloud Cost</simpara></entry>
+<entry align="left" valign="top"><simpara><emphasis>See <xref linkend="cost-analysis"/> for a detailed breakdown.</emphasis></simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+</chapter>
+<chapter xml:id="project-background">
+<title>Project Background</title>
+<section xml:id="_organizational_context">
+<title>Organizational Context</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>This initiative was launched to solve a problem that was limiting the organization&#8217;s
+ability to grow and compete: data was abundant but nearly impossible to use effectively.
+This chapter describes where things stood before the project, and what drove the decision
+to invest in a centralized data platform.</simpara>
+</sidebar>
+<simpara><emphasis role="strong">"Anonymous Company"</emphasis> was in a transitional period. New business lines were being launched, whole teams were being restructured,
+and the leadership recognized that data would be a critical asset for success. One project in particular had the potential to
+drive significant growth. However, this required the extraction of structured and unstructured data from hundreds of sources,
+consolidating them, and making them available for internal analytics and, if required, for external client-facing products.
+Such a project would have been impossible with the existing data landscape, which was fragmented, siloed, and lacked governance.</simpara>
+</section>
+<section xml:id="_current_state_before_the_data_lake">
+<title>Current State: Before the Data Lake</title>
+<section xml:id="_data_landscape">
+<title>Data Landscape</title>
+<simpara>Prior to this initiative, data was distributed across the following systems:</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="5">
+<colspec colname="col_1" colwidth="20*"/>
+<colspec colname="col_2" colwidth="20*"/>
+<colspec colname="col_3" colwidth="20*"/>
+<colspec colname="col_4" colwidth="20*"/>
+<colspec colname="col_5" colwidth="20*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Source System</entry>
+<entry align="left" valign="top">Source Type</entry>
+<entry align="left" valign="top">Format Type</entry>
+<entry align="left" valign="top">Owner</entry>
+<entry align="left" valign="top">Data Volume (est.)</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>CRM Platform</simpara></entry>
+<entry align="left" valign="top"><simpara>Internal</simpara></entry>
+<entry align="left" valign="top"><simpara>API and CSV exports</simpara></entry>
+<entry align="left" valign="top"><simpara>Sales Team</simpara></entry>
+<entry align="left" valign="top"><simpara><emphasis>1M records</emphasis></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Finance System</simpara></entry>
+<entry align="left" valign="top"><simpara>Internal</simpara></entry>
+<entry align="left" valign="top"><simpara>API and CSV exports</simpara></entry>
+<entry align="left" valign="top"><simpara>Finance Team</simpara></entry>
+<entry align="left" valign="top"><simpara><emphasis>5 years of transactions</emphasis></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Marketing Analytics</simpara></entry>
+<entry align="left" valign="top"><simpara>Internal</simpara></entry>
+<entry align="left" valign="top"><simpara>CSV exports</simpara></entry>
+<entry align="left" valign="top"><simpara>Marketing Team</simpara></entry>
+<entry align="left" valign="top"><simpara><emphasis>Mixed, inconsistent</emphasis></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Web Scraping Data</simpara></entry>
+<entry align="left" valign="top"><simpara>External</simpara></entry>
+<entry align="left" valign="top"><simpara>JSON files, HTML</simpara></entry>
+<entry align="left" valign="top"><simpara>Data Engineering Team</simpara></entry>
+<entry align="left" valign="top"><simpara><emphasis>no data, new sources anticipated</emphasis></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Third-Party Data Feeds</simpara></entry>
+<entry align="left" valign="top"><simpara>External</simpara></entry>
+<entry align="left" valign="top"><simpara>CSV and JSON</simpara></entry>
+<entry align="left" valign="top"><simpara>Data Engineering Team</simpara></entry>
+<entry align="left" valign="top"><simpara><emphasis>no data, new sources anticipated</emphasis></simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_key_pain_points">
+<title>Key Pain Points</title>
+<note>
+<simpara>The following pain points were identified through stakeholder interviews and a 2-week
+discovery phase conducted in Q1 2024. Each maps to a specific architectural decision
+described in <xref linkend="architecture"/>.</simpara>
+</note>
+<orderedlist numeration="arabic">
+<listitem>
+<simpara><emphasis role="strong">No Single Source of Truth</emphasis></simpara>
+<simpara>Each team maintained its own version of core metrics, leading to conflicting numbers in leadership meetings.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Manual and Error-Prone Pipelines</emphasis></simpara>
+<simpara>Critical reports relied on manual CSV exports and Gsheets transformations — a process
+vulnerable to human error and impossible to audit.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Zero Data Reuse</emphasis></simpara>
+<simpara>Teams independently collected overlapping data, resulting in duplicated effort and
+inconsistent definitions.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">No Governance Framework</emphasis></simpara>
+<simpara>There was no centralized view of who had access to what data, or any mechanism to
+enforce data retention or privacy policies at scale.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Scalability Limits</emphasis></simpara>
+<simpara>Several source systems were approaching their storage and query performance limits
+as data volumes grew.</simpara>
+</listitem>
+</orderedlist>
+</section>
+</section>
+<section xml:id="_drivers_for_change">
+<title>Drivers for Change</title>
+<simpara>The decision to invest in a data lake was driven by a combination of strategic, operational,
+and compliance factors:</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="2">
+<colspec colname="col_1" colwidth="25*"/>
+<colspec colname="col_2" colwidth="75*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Driver</entry>
+<entry align="left" valign="top">Description</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Strategic Growth</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Leadership identified data-driven decision-making as a core pillar of the 2024–2025 strategy.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Regulatory Compliance</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>New internal data governance policies required centralized audit trails and access controls.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Ambitions</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>High-impact projects were on hold due to the lack of a reliable data foundation.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Engineering Bandwidth</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>The data engineering team spent the majority of its time on data wrangling rather than
+building revenue-generating features.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_project_scope">
+<title>Project Scope</title>
+<section xml:id="_in_scope">
+<title>In Scope</title>
+<itemizedlist>
+<listitem>
+<simpara>Ingestion of all priority data sources listed in the current state table above, with a focus on the new sources
+anticipated in the next 6–12 months.</simpara>
+</listitem>
+<listitem>
+<simpara>Design and implementation of a three-layer data lake (Bronze, Silver, Gold).</simpara>
+</listitem>
+<listitem>
+<simpara>Data cataloguing, lineage tracking, and access governance.</simpara>
+</listitem>
+<listitem>
+<simpara>Self-service analytics layer for business users.</simpara>
+</listitem>
+<listitem>
+<simpara>Documentation, runbooks, and knowledge transfer.</simpara>
+</listitem>
+</itemizedlist>
+</section>
+<section xml:id="_out_of_scope">
+<title>Out of Scope</title>
+<itemizedlist>
+<listitem>
+<simpara>Real-time dashboards (planned for Phase 2).</simpara>
+</listitem>
+<listitem>
+<simpara>ML model training pipelines (planned for Phase 3).</simpara>
+</listitem>
+<listitem>
+<simpara>Direct integration with all legacy systems (prioritized subset only).</simpara>
+</listitem>
+</itemizedlist>
+</section>
+</section>
+<section xml:id="_project_timeline">
+<title>Project Timeline</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="16.6666*"/>
+<colspec colname="col_2" colwidth="33.3333*"/>
+<colspec colname="col_3" colwidth="50.0001*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Phase</entry>
+<entry align="left" valign="top">Period</entry>
+<entry align="left" valign="top">Deliverables</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>Discovery &amp; Design</simpara></entry>
+<entry align="left" valign="top"><simpara>Month 1–2</simpara></entry>
+<entry align="left" valign="top"><simpara>Architecture design, tool selection, stakeholder alignment, infrastructure provisioning.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Core Infrastructure</simpara></entry>
+<entry align="left" valign="top"><simpara>Month 2–3</simpara></entry>
+<entry align="left" valign="top"><simpara>GCP project setup, networking, IAM, Cloud Storage buckets, BigQuery datasets.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Ingestion Pipelines</simpara></entry>
+<entry align="left" valign="top"><simpara>Month 3–4</simpara></entry>
+<entry align="left" valign="top"><simpara>Dataflow pipelines for each priority source system; Bronze layer populated.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Transformation Layer</simpara></entry>
+<entry align="left" valign="top"><simpara>Month 4–5</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver and Gold layer transformations; data quality checks; Dataplex catalogue.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Analytics &amp; Handoff</simpara></entry>
+<entry align="left" valign="top"><simpara>Month 5–6</simpara></entry>
+<entry align="left" valign="top"><simpara>Self-service layer, dashboards, documentation, team training, go-live.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_stakeholders">
+<title>Stakeholders</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="28.5714*"/>
+<colspec colname="col_2" colwidth="28.5714*"/>
+<colspec colname="col_3" colwidth="42.8572*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Name / Role</entry>
+<entry align="left" valign="top">Organization</entry>
+<entry align="left" valign="top">Responsibility</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis>Executive Sponsor</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Leadership</simpara></entry>
+<entry align="left" valign="top"><simpara>Strategic alignment and budget approval.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis>Data Engineering Lead</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Technology</simpara></entry>
+<entry align="left" valign="top"><simpara>Technical design and delivery ownership.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis>Cloud Architect</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Technology</simpara></entry>
+<entry align="left" valign="top"><simpara>GCP architecture validation and security review.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis>Business Analyst</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Operations</simpara></entry>
+<entry align="left" valign="top"><simpara>Requirements gathering and acceptance testing.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+</chapter>
+<chapter xml:id="solution-overview">
+<title>Solution Overview</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>Think of the data lake as a <emphasis role="strong">central library for all company data</emphasis>. Every data source
+feeds into it, data is cleaned and organized automatically, and anyone with the right
+permissions can query it instantly — without waiting for engineering. Built on Google
+Cloud, it scales automatically and only charges for what you use.</simpara>
+</sidebar>
+<section xml:id="_what_is_a_data_lake">
+<title>What Is a Data Lake?</title>
+<simpara>A <emphasis role="strong">data lake</emphasis> is a centralized repository that stores structured, semi-structured,
+and unstructured data at any scale. Unlike a traditional data warehouse (which requires
+data to be structured and cleaned before loading), a data lake accepts raw data as-is
+and applies structure only when the data is read or queried.</simpara>
+</section>
+<section xml:id="_the_three_layer_architecture_medallion">
+<title>The Three-Layer Architecture (Medallion)</title>
+<simpara>Our data lake is organized into three logical layers, a widely adopted pattern
+known as the <emphasis role="strong">Medallion Architecture</emphasis>:</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="20*"/>
+<colspec colname="col_2" colwidth="20*"/>
+<colspec colname="col_3" colwidth="60*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Layer</entry>
+<entry align="left" valign="top">Also Called</entry>
+<entry align="left" valign="top">Purpose</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/circle.png"/>
+</imageobject>
+<textobject><phrase>circle</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Bronze</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Raw / Landing</simpara></entry>
+<entry align="left" valign="top"><simpara>Stores raw, unmodified data exactly as received from source systems.
+Acts as an immutable archive. Nothing is ever deleted from Bronze.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/adjust.png"/>
+</imageobject>
+<textobject><phrase>adjust</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Silver</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Cleansed / Conformed</simpara></entry>
+<entry align="left" valign="top"><simpara>Data is validated, deduplicated, standardized, and enriched.
+This is the single source of truth for analytical teams.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><inlinemediaobject role="yellow">
+<imageobject>
+<imagedata fileref="diagrams/icons/circle.png"/>
+</imageobject>
+<textobject><phrase>circle</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Gold</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Curated / Serving</simpara></entry>
+<entry align="left" valign="top"><simpara>Purpose-built, aggregated datasets optimized for specific use cases —
+dashboards, reports, ML training sets, or API serving.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+<formalpara>
+<title>Data Flow Through the Layers</title>
+<para>
+<screen>[Source Systems]
+      |
+      v
+  [Bronze Layer]        &lt;- Raw ingestion, no transformation, append-only
+      |
+      v
+  [Silver Layer]        &lt;- Cleansing, validation, deduplication, standardization
+      |
+      v
+  [Gold Layer]          &lt;- Aggregation, business logic, domain-specific datasets
+      |
+      v
+[Consumers: BI Tools, Analysts, ML Models, APIs]</screen>
+</para>
+</formalpara>
+</section>
+<section xml:id="_why_google_cloud_platform">
+<title>Why Google Cloud Platform?</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>Google Cloud was selected because it offers mature serverless data
+processing services and the best integration with our existing GCP footprint, with BigQuery being the gold standard for
+large-scale analytical queries. We can run complex company-wide reports in seconds
+for a fraction of a cent.</simpara>
+</sidebar>
+<simpara>GCP was selected after evaluating AWS and Azure against the following criteria:</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="4">
+<colspec colname="col_1" colwidth="40*"/>
+<colspec colname="col_2" colwidth="20*"/>
+<colspec colname="col_3" colwidth="20*"/>
+<colspec colname="col_4" colwidth="20*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Criteria</entry>
+<entry align="left" valign="top">GCP</entry>
+<entry align="left" valign="top">AWS</entry>
+<entry align="left" valign="top">Azure</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>BigQuery (serverless analytics)</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/check.png"/>
+</imageobject>
+<textobject><phrase>check</phrase></textobject>
+</inlinemediaobject> Native</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/times.png"/>
+</imageobject>
+<textobject><phrase>times</phrase></textobject>
+</inlinemediaobject> Redshift (cluster-based)</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/times.png"/>
+</imageobject>
+<textobject><phrase>times</phrase></textobject>
+</inlinemediaobject> Synapse (complex)</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Fully managed streaming ingest</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/check.png"/>
+</imageobject>
+<textobject><phrase>check</phrase></textobject>
+</inlinemediaobject> Pub/Sub + Dataflow</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/check.png"/>
+</imageobject>
+<textobject><phrase>check</phrase></textobject>
+</inlinemediaobject> Kinesis + Glue</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/check.png"/>
+</imageobject>
+<textobject><phrase>check</phrase></textobject>
+</inlinemediaobject> Event Hubs + ADF</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Data cataloguing &amp; governance</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/check.png"/>
+</imageobject>
+<textobject><phrase>check</phrase></textobject>
+</inlinemediaobject> Dataplex + Data Catalog</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/check.png"/>
+</imageobject>
+<textobject><phrase>check</phrase></textobject>
+</inlinemediaobject> Glue Catalog</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/check.png"/>
+</imageobject>
+<textobject><phrase>check</phrase></textobject>
+</inlinemediaobject> Purview</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Cost model</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/check.png"/>
+</imageobject>
+<textobject><phrase>check</phrase></textobject>
+</inlinemediaobject> Pay-per-query</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/minus.png"/>
+</imageobject>
+<textobject><phrase>minus</phrase></textobject>
+</inlinemediaobject> Cluster uptime</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/minus.png"/>
+</imageobject>
+<textobject><phrase>minus</phrase></textobject>
+</inlinemediaobject> DTU/vCore</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Existing GCP footprint</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/check.png"/>
+</imageobject>
+<textobject><phrase>check</phrase></textobject>
+</inlinemediaobject> Yes</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/times.png"/>
+</imageobject>
+<textobject><phrase>times</phrase></textobject>
+</inlinemediaobject> No</simpara></entry>
+<entry align="left" valign="top"><simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/times.png"/>
+</imageobject>
+<textobject><phrase>times</phrase></textobject>
+</inlinemediaobject> No</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+<simpara>The combination of <emphasis role="strong">BigQuery&#8217;s serverless pricing</emphasis>, native <emphasis role="strong">Dataplex governance</emphasis>,
+and the organization&#8217;s existing GCP presence made GCP the clear choice.</simpara>
+</section>
+<section xml:id="_solution_components_at_a_glance">
+<title>Solution Components at a Glance</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="28.5714*"/>
+<colspec colname="col_2" colwidth="42.8571*"/>
+<colspec colname="col_3" colwidth="28.5715*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Component</entry>
+<entry align="left" valign="top">Role in the Solution</entry>
+<entry align="left" valign="top">Layer(s) Involved</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Storage (GCS)</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Object storage for unstructured Bronze layer data.</simpara></entry>
+<entry align="left" valign="top"><simpara>Bronze</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Pub/Sub</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Managed message queue for ingesting scraping events.</simpara></entry>
+<entry align="left" valign="top"><simpara>Bronze</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Run</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Serverless container execution for web scraping and API-based ingestion.</simpara></entry>
+<entry align="left" valign="top"><simpara>Bronze</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Dataflow</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Fully managed Apache Beam pipelines for batch and streaming transformations.</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">BigQuery</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Serverless analytical data warehouse for storing structured Bronze layer data, but also powering the Silver and
+  Gold layers and all BI workloads.</simpara></entry>
+<entry align="left" valign="top"><simpara>Bronze, Silver, Gold</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Dataplex</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Unified data governance: cataloguing, lineage, quality checks, and policy enforcement.</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver, Gold</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Composer (Airflow)</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Workflow orchestration for scheduling batch pipelines.</simpara></entry>
+<entry align="left" valign="top"><simpara>Bronze, Silver</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Dataform (dbt)</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>SQL-based transformations and testing framework for data modeling.</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver, Gold</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">IAM &amp; VPC Service Controls</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Identity and access management and network controls.</simpara></entry>
+<entry align="left" valign="top"><simpara>Bronze, Silver, Gold</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Looker Studio / Looker</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Business intelligence and self-service reporting for end users.</simpara></entry>
+<entry align="left" valign="top"><simpara>Gold</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+</chapter>
+<chapter xml:id="architecture">
+<title>Architecture</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>This chapter describes <emphasis role="strong">how all the pieces fit together</emphasis>. The architecture ensures
+data flows reliably from every source system into the data lake, is automatically
+cleaned, and becomes available for analysis — all without manual intervention.</simpara>
+</sidebar>
+<section xml:id="_architecture_overview">
+<title>Architecture Overview</title>
+<simpara>The following diagram illustrates the end-to-end data flow:</simpara>
+<formalpara>
+<title>High-Level Architecture Diagram</title>
+<para>plantuml::diagrams/architecture.puml[GCP Data Lake Architecture,align="center",title-align="center",format=svg]</para>
+</formalpara>
+<simpara><emphasis>[Diagram: Source systems on the top. Ingestion layer via Cloud Run functions and Pub/Sub. Dataflow for ingestion and transformations outside BQ. Bronze layer in GCS and BigQuery. Silver and Gold layers in BigQuery. SQL Transformations inside BQ.  Orchestration via Cloud Composer for ETL pipelines. Orchestration via Dataform for ELT pipelines. Consumers include Looker and APIs. Governance via IAM, VPC, and Dataplex.]</emphasis></simpara>
+</section>
+<section xml:id="_architectural_principles">
+<title>Architectural Principles</title>
+<simpara>The design was guided by the following principles:</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="2">
+<colspec colname="col_1" colwidth="25*"/>
+<colspec colname="col_2" colwidth="75*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Principle</entry>
+<entry align="left" valign="top">How It Is Applied</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Immutability</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Bronze layer data is never modified or deleted. Transformations produce new datasets
+in Silver and Gold.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Idempotency</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>All pipelines can be safely re-run without producing duplicate data.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Least Privilege</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Every service account and user role has only the minimum permissions required.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Fail Fast, Fail Visibly</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Pipeline failures trigger immediate alerts. Bad data is quarantined, not silently discarded.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Scalability</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Serverless services (Dataflow, BigQuery) automatically scale with data volume and concurrency.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_ingestion_architecture">
+<title>Ingestion Architecture</title>
+<simpara>The ingestion pipeline acquires data from all source systems and lands it, unmodified, in the
+Bronze layer. Cloud Composer orchestrates each run; Cloud Run and Cloud Dataflow communicate
+exclusively through Cloud Pub/Sub; and Dataflow is the sole process that writes to Bronze.
+Orchestration scheduling and retry logic are covered in the <xref linkend="orchestration-architecture"/> section.</simpara>
+<formalpara>
+<title>Ingestion Architecture Diagram</title>
+<para>plantuml::diagrams/ingestion-architecture.puml[GCP Ingestion Architecture,align="center",title-align="center",format=svg]</para>
+</formalpara>
+<simpara><emphasis>[Diagram: Source systems feed Cloud Run scrapers and API clients. Cloud Run and Dataflow communicate
+bidirectionally via two Cloud Pub/Sub topics. Dataflow is the sole writer to the Bronze layer and
+reads back from it for deduplication. Cloud Composer orchestrates Dataflow jobs.]</emphasis></simpara>
+<section xml:id="_component_roles">
+<title>Component Roles</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="2">
+<colspec colname="col_1" colwidth="25*"/>
+<colspec colname="col_2" colwidth="75*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Component</entry>
+<entry align="left" valign="top">Responsibility</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Composer</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Schedules, triggers, and monitors Dataflow ingestion jobs via Airflow DAGs.
+Supports both cron-based and event-driven triggers. See <xref linkend="orchestration-architecture"/> for details.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Run</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Executes lightweight scraper and API-fetch logic. Stateless, auto-scaled, and short-lived.
+Publishes raw events to the <literal>ingest-events</literal> Pub/Sub topic on completion.
+When a scraper requires external input (e.g., URL lists, pagination cursors, search terms),
+it subscribes to the <literal>scraper-input</literal> topic to receive those parameters from Dataflow.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Pub/Sub</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Decoupled, durable message bus with two logical flows:
+<literal>ingest-events</literal> — Cloud Run publishes raw scraped data; Dataflow subscribes and consumes.
+<literal>scraper-input</literal> — Dataflow publishes input parameters; Cloud Run subscribes to pick them up.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Dataflow</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Subscribes to <literal>ingest-events</literal>, applies minimal normalisation (type casting, format detection),
+and is the <emphasis role="strong">sole writer</emphasis> to the Bronze layer.
+Reads existing Bronze records to perform deduplication before committing new data.
+Publishes to <literal>scraper-input</literal> when a downstream scraper requires parameterised input.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">BigQuery and Cloud Storage</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Immutable raw landing zone.
+Cloud Storage receives unstructured files (PDF, HTML, DOC) in their original format.
+BigQuery receives structured rows with all original fields preserved.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+<itemizedlist>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">At-least-once delivery</emphasis>: Pub/Sub guarantees at-least-once; Dataflow uses Bronze read-back to detect and discard duplicate records before writing.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Parameterised scrapers</emphasis>: When a scraper requires external input data, Dataflow publishes those parameters to the <literal>scraper-input</literal> topic before or during a run.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Immutability</emphasis>: Dataflow never updates or deletes existing Bronze records. Every run appends new date-partitioned files or rows.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Partitioning</emphasis>: GCS paths use Hive-style date partitioning (<literal>year=YYYY/month=MM/day=DD/</literal>).BigQuery tables are partitioned by ingestion timestamp.</simpara>
+</listitem>
+</itemizedlist>
+</section>
+</section>
+<section xml:id="_transformation_architecture">
+<title>Transformation Architecture</title>
+<simpara>Transformation is split into two distinct pipelines: an <emphasis role="strong">ETL pipeline</emphasis> (outside BigQuery) for
+extracting structured content from unstructured files, and an <emphasis role="strong">ELT pipeline</emphasis> (inside BigQuery)
+for cleansing, conforming, and aggregating data across Bronze, Silver, and Gold layers.
+Cloud Composer orchestrates the ETL pipeline; Dataform manages the ELT SQL pipeline.
+Orchestration scheduling and dependency management are covered in the <xref linkend="orchestration-architecture"/> section.</simpara>
+<formalpara>
+<title>Transformation Architecture Diagram</title>
+<para>plantuml::diagrams/transformation-architecture.puml[GCP Transformation Architecture,align="center",title-align="center",format=svg]</para>
+</formalpara>
+<simpara><emphasis>[Diagram: ETL pipeline — Dataflow reads unstructured files from GCS Bronze and writes extracted
+structured data back into BigQuery Bronze, orchestrated by Cloud Composer. ELT pipeline — BigQuery
+SQL transforms (managed by Dataform) move data from Bronze to Silver and Silver to Gold.
+Dataplex enforces quality checks and tracks lineage across Silver and Gold.]</emphasis></simpara>
+<section xml:id="_component_roles_2">
+<title>Component Roles</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="2">
+<colspec colname="col_1" colwidth="25*"/>
+<colspec colname="col_2" colwidth="75*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Component</entry>
+<entry align="left" valign="top">Responsibility</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Composer</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Triggers and monitors Dataflow extraction jobs via Airflow DAGs.
+Handles scheduling, retries, and alerting for the ETL pipeline.
+See <xref linkend="orchestration-architecture"/> for details.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Dataflow</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Reads unstructured files (PDF, HTML, DOC) from Cloud Storage Bronze.
+Applies OCR, LLM-assisted extraction, NLP entity recognition, and ORM-style mapping to produce
+structured rows, which it writes to BigQuery Bronze.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Dataform</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Google Cloud&#8217;s native SQL transformation orchestrator (analogous to dbt).
+Manages the DAG of SQL models that move data from Bronze → Silver → Gold inside BigQuery,
+runs schema and data quality tests after every model, and tracks full column-level lineage.
+See <xref linkend="orchestration-architecture"/> for details.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">BigQuery — Bronze</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Landing zone for structured data produced by both the ingestion pipeline (structured sources)
+and the Dataflow extraction pipeline (unstructured sources).
+All rows are append-only and retain original fields plus source metadata.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">BigQuery — Silver</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Cleansed and conformed layer.
+SQL models validate, deduplicate, cast types, conform domains, and handle Slowly Changing
+Dimensions (SCD). Dataplex enforces data quality rules at this layer.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">BigQuery — Gold</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Curated serving layer.
+SQL models produce business aggregations, cross-domain joins, and pre-computed KPIs.
+Dataplex maintains the data catalog and column-level lineage.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Dataplex</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Enforces data quality checks (not-null, referential integrity, range checks) on Silver and Gold.
+Maintains the data catalog and tracks lineage from Bronze through to Gold.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_etl_pipeline_unstructured_extraction_outside_bigquery">
+<title>ETL Pipeline — Unstructured Extraction (outside BigQuery)</title>
+<simpara>Raw files (PDFs, HTML pages, Word documents) land in Cloud Storage as part of the Bronze layer.
+They carry useful structured information that cannot be queried by SQL directly. A Dataflow job
+extracts this information and writes it as structured rows into BigQuery Bronze, making it
+available for the ELT pipeline downstream.</simpara>
+<screen linenumbering="unnumbered">[Cloud Storage — Bronze]
+  raw files: PDF, HTML, DOC, …
+        |
+        | triggered by Cloud Composer
+        v
+[Cloud Dataflow]
+  - OCR / PDF parsing
+  - LLM-assisted field extraction
+  - NLP / ORM entity recognition
+  - Schema mapping &amp; type casting
+        |
+        v
+[BigQuery — Bronze]
+  extracted structured rows
+  (all original fields + source metadata retained)</screen>
+<itemizedlist>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Orchestration</emphasis>: Cloud Composer triggers Dataflow jobs on schedule or on new-file events.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Techniques</emphasis>: OCR for scanned PDFs, LLMs for free-text extraction, NLP for entity recognition, ORM-style mappers for semi-structured formats (e.g., HTML tables).</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Immutability</emphasis>: Dataflow appends extracted rows; raw source files in GCS are never modified.</simpara>
+</listitem>
+</itemizedlist>
+</section>
+<section xml:id="_elt_pipeline_sql_transformations_inside_bigquery">
+<title>ELT Pipeline — SQL Transformations (inside BigQuery)</title>
+<simpara>Once structured data is in BigQuery Bronze, all further transformations are expressed as SQL
+and executed natively inside BigQuery. Dataform (analogous to dbt for Google Cloud) manages
+the DAG of SQL models, runs data quality tests after each step, and tracks the full lineage
+from Bronze through to Gold.</simpara>
+<screen linenumbering="unnumbered">[BigQuery — Bronze]
+  raw structured tables
+        |
+        | Dataform — Bronze → Silver SQL models
+        v
+[BigQuery — Silver]
+  - Null / referential integrity checks       (Dataplex DQ)
+  - Deduplication &amp; surrogate key generation
+  - Type standardisation &amp; domain conforming
+  - Slowly Changing Dimension (SCD) handling
+        |
+        | Dataform — Silver → Gold SQL models
+        v
+[BigQuery — Gold]
+  - Business aggregations
+  - Cross-domain joins
+  - Pre-computed metrics &amp; KPIs              (Dataplex catalog)</screen>
+<itemizedlist>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Bronze → Silver</emphasis>: validation, deduplication, type standardisation, and SCD handling via SQL.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Silver → Gold</emphasis>: business aggregations, cross-domain joins, and pre-computed KPIs via SQL.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Testing</emphasis>: Dataform runs schema tests, not-null assertions, and referential integrity checks after every model run.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Quality &amp; lineage</emphasis>: Dataplex enforces data quality rules on Silver and Gold and maintains column-level lineage across all layers.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Idempotency</emphasis>: All SQL models use <literal>INSERT OVERWRITE</literal> or <literal>MERGE</literal> semantics so any run can be safely repeated without producing duplicates.</simpara>
+</listitem>
+</itemizedlist>
+</section>
+</section>
+<section xml:id="orchestration-architecture">
+<title>Orchestration Architecture</title>
+<simpara>Orchestration is split into two layers: <emphasis role="strong">Cloud Composer</emphasis> (the outer orchestrator) manages
+all Dataflow jobs and triggers the Dataform pipeline once Bronze data is ready;
+<emphasis role="strong">Dataform</emphasis> (the inner SQL orchestrator) manages the DAG of BigQuery SQL models that
+build Silver and Gold. Both layers support time-based scheduling and event-driven execution.</simpara>
+<formalpara>
+<title>Orchestration Architecture Diagram</title>
+<para>plantuml::diagrams/orchestration-architecture.puml[GCP Orchestration Architecture,align="center",title-align="center",format=svg]</para>
+</formalpara>
+<simpara><emphasis>[Diagram: Cron schedules and event triggers fire Cloud Composer DAGs. Composer triggers
+Dataflow jobs for ingestion and unstructured extraction into Bronze. Composer then triggers
+Dataform, which manages the chained SQL pipeline that creates Silver and then Gold.]</emphasis></simpara>
+<section xml:id="_component_roles_3">
+<title>Component Roles</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="2">
+<colspec colname="col_1" colwidth="25*"/>
+<colspec colname="col_2" colwidth="75*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Component</entry>
+<entry align="left" valign="top">Responsibility</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Triggers</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Two kinds: cron schedules (hourly, daily, weekly per source) and event-driven triggers
+(GCS object-finalise notifications, Pub/Sub messages, BigQuery table update events).
+Both are configured in Cloud Composer as Airflow sensors or DAG schedule intervals.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Composer / Airflow</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Outer orchestrator. Runs DAGs for ingestion, unstructured extraction, and the
+transformation handoff. Handles retries, SLA monitoring, alerting, and dependency
+chaining across Dataflow and Dataform.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Cloud Dataflow</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Stateless compute jobs launched on demand by Composer. Two job types:
+<literal>Ingestion Job</literal> — scrapes APIs and writes raw data to Bronze.
+<literal>Extraction Job</literal> — reads unstructured files from GCS Bronze, applies
+OCR / LLM / NLP techniques, and writes structured rows to BigQuery Bronze.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Dataform</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Inner SQL orchestrator (analogous to dbt). Triggered by Composer once Bronze is ready.
+Runs the Bronze → Silver model set (validation, dedup, SCD), then chains into
+the Silver → Gold model set (aggregations, KPIs). Runs built-in assertion tests
+after every model and reports failures back to Composer.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">BigQuery Silver &amp; Gold</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Output of the Dataform SQL pipeline. Dataform creates or fully refreshes these
+tables on every successful run using <literal>INSERT OVERWRITE</literal> / <literal>MERGE</literal> semantics.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+<itemizedlist>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Schedule cadence</emphasis>: configurable per source — ingest jobs run hourly or daily; extractionand transformation jobs run once ingest completes.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Event-driven runs</emphasis>: a GCS <literal>object.finalize</literal> notification or a Pub/Sub message can fire an out-of-cycle DAG run for near-real-time sources.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Error handling</emphasis>: Composer retries Dataflow jobs with exponential back-off; failed Dataform assertions quarantine affected partitions and raise an alert without blocking unaffected models.</simpara>
+</listitem>
+<listitem>
+<simpara><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/cogs.png"/>
+</imageobject>
+<textobject><phrase>cogs</phrase></textobject>
+</inlinemediaobject> <emphasis role="strong">Idempotency</emphasis>: every Dataflow job and every Dataform SQL model can be safely re-run; Bronze appends with deduplication, Silver and Gold use overwrite/merge semantics.</simpara>
+</listitem>
+</itemizedlist>
+</section>
+</section>
+<section xml:id="_monitoring_and_alerting_architecture">
+<title>Monitoring and Alerting Architecture</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="33.3333*"/>
+<colspec colname="col_2" colwidth="33.3333*"/>
+<colspec colname="col_3" colwidth="33.3334*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Signal</entry>
+<entry align="left" valign="top">Tool</entry>
+<entry align="left" valign="top">Action on Failure</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>Pipeline run status</simpara></entry>
+<entry align="left" valign="top"><simpara>Cloud Monitoring + Composer</simpara></entry>
+<entry align="left" valign="top"><simpara>PagerDuty/email alert to on-call engineer</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Data quality check failure</simpara></entry>
+<entry align="left" valign="top"><simpara>Dataplex DQ + Cloud Logging</simpara></entry>
+<entry align="left" valign="top"><simpara>Quarantine row to bad-data table, alert</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>BigQuery slot utilization</simpara></entry>
+<entry align="left" valign="top"><simpara>Cloud Monitoring dashboard</simpara></entry>
+<entry align="left" valign="top"><simpara>Review query optimization</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Storage growth anomaly</simpara></entry>
+<entry align="left" valign="top"><simpara>Cloud Monitoring</simpara></entry>
+<entry align="left" valign="top"><simpara>Alert if daily ingest &gt; 3x moving average</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Pipeline SLA breach</simpara></entry>
+<entry align="left" valign="top"><simpara>Cloud Composer SLA miss sensor</simpara></entry>
+<entry align="left" valign="top"><simpara>Escalation notification</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+</chapter>
+<chapter xml:id="gcp-services">
+<title>GCP Services Deep Dive</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>This chapter explains each Google Cloud service used in the platform,
+why it was chosen over alternatives, and how it contributes to the
+overall solution. Non-technical readers can focus on the "business value"
+callouts in each section.</simpara>
+</sidebar>
+<important>
+<simpara>This chapter is ommited for the sake of brevity and to not repeat information that is already widely
+available in Google Cloud documentation.</simpara>
+</important>
+</chapter>
+<chapter xml:id="data-lake-design">
+<title>Data Lake Design</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>This chapter describes how data is organized, modeled, and governed inside the
+data lake. Good design here is what turns a "pile of files in the cloud" into
+a <emphasis role="strong">trusted, reusable data asset</emphasis> that teams across the organization can rely on.
+The central question of this chapter is: <emphasis role="strong">how should data be modeled at each layer?</emphasis>
+Should Bronze be normalized? Should Silver use Kimball? Should Gold use One Big Table?
+Each decision has long-term consequences for performance, integrity, and development
+velocity — and every recommendation here is grounded in the specific objectives of
+this project.</simpara>
+</sidebar>
+<section xml:id="_naming_conventions">
+<title>Naming Conventions</title>
+<simpara>Consistent naming reduces ambiguity, makes automation easier, and helps analysts
+navigate the catalogue. The following convention applies across all layers.</simpara>
+<section xml:id="_gcs_bucket_names">
+<title>GCS Bucket Names</title>
+<screen linenumbering="unnumbered">{project-id}-{layer}-{environment}
+
+Examples:
+  mycompany-bronze-prod
+  mycompany-silver-prod
+  mycompany-gold-prod
+  mycompany-bronze-dev</screen>
+</section>
+<section xml:id="_gcs_object_paths">
+<title>GCS Object Paths</title>
+<screen linenumbering="unnumbered">{bucket}/{source_system}/{entity}/{year=YYYY}/{month=MM}/{day=DD}/{file}
+
+Examples:
+  mycompany-bronze-prod/court-records/cases/year=2025/month=11/day=15/part-00001.parquet
+  mycompany-bronze-prod/acquisitions/defendants-pdfs/year=2025/month=11/day=15/case-2025-TX-0042.pdf
+  mycompany-silver-prod/acquisitions/properties/year=2025/month=11/properties_cleansed.parquet</screen>
+</section>
+<section xml:id="_bigquery_datasets_and_tables">
+<title>BigQuery Datasets and Tables</title>
+<screen linenumbering="unnumbered">Dataset:  {layer}_{domain}
+Table:    {entity}
+
+Examples:
+  bronze_acquisitions.cases_raw
+  bronze_acquisitions.properties_raw
+  bronze_acquisitions.defendants_raw
+  silver_acquisitions.cases
+  silver_acquisitions.properties
+  silver_acquisitions.defendants
+  gold_acquisitions.fact_distressed_acquisitions
+  gold_acquisitions.dim_cases
+  gold_acquisitions.dim_properties
+  gold_acquisitions.dim_defendants
+  gold_acquisitions.crm_distressed_export</screen>
+</section>
+</section>
+<section xml:id="_data_partitioning_strategy">
+<title>Data Partitioning Strategy</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="20*"/>
+<colspec colname="col_2" colwidth="40*"/>
+<colspec colname="col_3" colwidth="40*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Layer</entry>
+<entry align="left" valign="top">GCS Partitioning</entry>
+<entry align="left" valign="top">BigQuery Partitioning</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>Bronze</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>year/month/day</literal> (append only)</simpara></entry>
+<entry align="left" valign="top"><simpara>Partitioned by <literal>_ingested_at</literal> (ingestion timestamp). External tables used for
+ GCS-resident unstructured files.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Silver</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>year/month</literal> (reprocessed when source changes)</simpara></entry>
+<entry align="left" valign="top"><simpara>DATE or TIMESTAMP partition on the business event date
+ (<literal>filing_date</literal>, <literal>_created_at</literal>). Clustering on high-cardinality filter columns.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Gold</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>year/month</literal> (overwritten on each Dataform run)</simpara></entry>
+<entry align="left" valign="top"><simpara>DATE partition + clustering on the most common filter columns
+ (e.g., <literal>case_status</literal>, <literal>court_district</literal>, <literal>crm_sync_status</literal>).</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="data-modeling-strategy">
+<title>Data Modeling Strategy</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>Data modeling is the discipline of deciding <emphasis role="strong">how data is structured and related</emphasis>
+within each layer. A poor modeling decision in Silver can force every downstream
+consumer to work around the same structural issues forever. The correct model at
+each layer depends on the primary consumer, the change frequency of the data, and
+the relationships between entities in the business domain.</simpara>
+</sidebar>
+<simpara>The three Bronze → Silver → Gold layers serve fundamentally different purposes, and
+each warrants a different modeling approach. The table below summarizes the decision
+for this project before the detailed rationale for each choice is given.</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="4">
+<colspec colname="col_1" colwidth="14.2857*"/>
+<colspec colname="col_2" colwidth="28.5714*"/>
+<colspec colname="col_3" colwidth="28.5714*"/>
+<colspec colname="col_4" colwidth="28.5715*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Layer</entry>
+<entry align="left" valign="top">Model Chosen</entry>
+<entry align="left" valign="top">Models Considered</entry>
+<entry align="left" valign="top">Reason Others Were Rejected</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Bronze</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Schema-on-Read (raw preservation)</simpara></entry>
+<entry align="left" valign="top"><simpara>Normalized relational, flat/wide</simpara></entry>
+<entry align="left" valign="top"><simpara>Normalization in Bronze is premature. Source schemas change; raw fidelity must be
+ preserved for full pipeline replay.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Silver</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Normalized Relational (3NF)</simpara></entry>
+<entry align="left" valign="top"><simpara>Kimball Star at Silver; One Big Table at Silver</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver is the integration layer, not the serving layer. 3NF ensures entity integrity
+ and eliminates redundancy across the multi-entity domain of this project.
+ Kimball at Silver conflates integration with serving and forces a single query
+ pattern on all consumers. OBT at Silver creates update anomalies for one-to-many entities.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Gold — Analytics</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Kimball Star Schema</simpara></entry>
+<entry align="left" valign="top"><simpara>Snowflake Schema; OBT only</simpara></entry>
+<entry align="left" valign="top"><simpara>Star Schema balances query performance with dimensional flexibility for BI/Looker.
+ Snowflake adds join depth that slows interactive queries without meaningful benefit
+ for this domain&#8217;s dimension cardinality. OBT-only loses the ability to filter on
+ well-defined dimension attributes.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+<section xml:id="_bronze_layer_schema_on_read_raw_preservation">
+<title>Bronze Layer: Schema-on-Read (Raw Preservation)</title>
+<simpara>Bronze is <emphasis role="strong">not a modeling layer</emphasis> — it is an archival layer. The objective is to land
+data exactly as it was received from the source, augmented only by system-added
+metadata columns (prefixed with <literal>_</literal>), and nothing else.</simpara>
+<important>
+<simpara>Never apply business transformations in Bronze. No type casting to business types,
+no field renaming, no normalization, no derivation of new columns. The only permissible
+additions are ingestion metadata columns prefixed with <literal>_</literal> (e.g., <literal>_ingested_at</literal>,
+<literal>_source</literal>, <literal>_pipeline_run_id</literal>).</simpara>
+</important>
+<simpara><emphasis role="strong">Why no normalization in Bronze?</emphasis></simpara>
+<itemizedlist>
+<listitem>
+<simpara><emphasis role="strong">Source schemas change.</emphasis> A court records API may return <literal>case_no</literal> today and
+<literal>case_number</literal> tomorrow. Raw preservation means Bronze never needs reprocessing
+for source-side renames.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Replay requirements.</emphasis> If a Bug is discovered in Silver six months later, Bronze
+must be replayable from day one. Any transformation applied in Bronze becomes a
+liability that may need to be undone before replay.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Unstructured sources exist.</emphasis> PDFs and HTML files have no relational schema.
+Forcing a structure onto Bronze for unstructured content would require OCR before
+landing, creating a fragile pre-processing dependency.</simpara>
+</listitem>
+</itemizedlist>
+<formalpara>
+<title>Bronze Table: <literal>bronze_acquisitions.cases_raw</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">CREATE TABLE bronze_acquisitions.cases_raw (
+  -- Raw source fields (preserved exactly as received from the court API)
+  case_name          STRING,          -- "2025-TX-HARRIS-0042"
+  case_id            STRING,          -- court-assigned numeric/alphanumeric ID
+  court_district     STRING,
+  filing_date        STRING,          -- raw: "11/15/2025" — NOT cast to DATE here
+  status             STRING,          -- raw: "ACTIVE", "pending", "open", etc.
+  raw_payload        JSON,            -- full raw JSON payload for unmodeled fields
+
+  -- Ingestion metadata (system-added, never from the source)
+  _ingested_at       TIMESTAMP  NOT NULL,
+  _source            STRING     NOT NULL,   -- e.g., "court_api_v1"
+  _pipeline_run_id   STRING     NOT NULL,
+  _pubsub_message_id STRING
+)
+PARTITION BY DATE(_ingested_at)
+OPTIONS (description = 'Raw court case records. Append-only. Do not query directly in reports.');</programlisting>
+</para>
+</formalpara>
+</section>
+<section xml:id="_silver_layer_normalized_relational_model_3nf">
+<title>Silver Layer: Normalized Relational Model (3NF)</title>
+<simpara>Silver is the <emphasis role="strong">single source of truth</emphasis> layer. Its design goal is maximum data
+integrity and minimum redundancy. It is the foundation on which all Gold models,
+data scientists, and operational queries build.</simpara>
+<simpara><emphasis role="strong">Why normalized 3NF at Silver, and not Kimball or OBT?</emphasis></simpara>
+<simpara>The distressed acquisitions domain contains three clearly distinct, independently
+meaningful entities with one-to-many relationships:</simpara>
+<screen linenumbering="unnumbered">Case (1) ──── (N) Properties     (one case → many properties under dispute)
+Case (1) ──── (N) Defendants     (one case → many defendants)</screen>
+<simpara>Choosing OBT or Kimball at the Silver layer for this structure creates critical
+design problems:</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="16.6666*"/>
+<colspec colname="col_2" colwidth="50*"/>
+<colspec colname="col_3" colwidth="33.3334*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Model at Silver</entry>
+<entry align="left" valign="top">What Happens</entry>
+<entry align="left" valign="top">Why This Is Wrong</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">One Big Table</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>One row per (case × property × defendant) combination. A case with 2 properties
+ and 3 defendants generates 6 rows, with all case-level fields repeated 6 times.</simpara></entry>
+<entry align="left" valign="top"><simpara>Update anomalies: a case status change from <literal>ACTIVE</literal> to <literal>SETTLED</literal> requires updating
+ all 6 rows atomically. A missed update produces two conflicting statuses in the same table.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Kimball Star at Silver</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>A fact table with grain <literal>case_id × property_id × defendant_id</literal> and denormalized
+ dimension attributes embedded.</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver is model-agnostic and should serve all consumers. Pre-committing to a Kimball
+ grain at Silver forces every consumer — including ML pipelines and operational APIs —
+ to accept that grain. It also conflates concern: Silver is for integration, Gold is for serving.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Normalized 3NF</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Each entity lives in its own table, deduplicated and linked by foreign keys.
+ Silver rows for <literal>cases</literal> are updated in one place; <literal>properties</literal> and <literal>defendants</literal>
+ reference <literal>case_id</literal> as a foreign key.</simpara></entry>
+<entry align="left" valign="top"><simpara>This is the correct choice. Silver is a clean, authoritative, entity-oriented
+ representation of the business domain. Gold models then denormalize or aggregate
+ as needed for their specific consumers.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+<formalpara>
+<title>Silver Schema: <literal>silver_acquisitions.cases</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">CREATE TABLE silver_acquisitions.cases (
+  case_id           STRING     NOT NULL,   -- PK: deduplicated court case ID
+  case_name         STRING     NOT NULL,
+  court_district    STRING     NOT NULL,
+  filing_date       DATE       NOT NULL,   -- properly typed, validated
+  status            STRING     NOT NULL,   -- ACTIVE | SETTLED | DISMISSED
+  _bronze_source_id STRING,               -- back-reference to bronze row
+  _created_at       TIMESTAMP  NOT NULL,
+  _updated_at       TIMESTAMP  NOT NULL
+)
+PARTITION BY filing_date
+CLUSTER BY court_district, status;</programlisting>
+</para>
+</formalpara>
+<formalpara>
+<title>Silver Schema: <literal>silver_acquisitions.properties</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">CREATE TABLE silver_acquisitions.properties (
+  property_id       STRING     NOT NULL,   -- PK: generated surrogate key
+  case_id           STRING     NOT NULL,   -- FK → silver_acquisitions.cases
+  parcel_id         STRING,
+  street_address    STRING,
+  city              STRING,
+  state             STRING,
+  zip_code          STRING,
+  owner_name        STRING,
+  assessed_value    NUMERIC,              -- parsed from raw "$245,000" string
+  tax_year          INT64,
+  delinquent_amount NUMERIC,
+  latitude          FLOAT64,
+  longitude         FLOAT64,
+  _created_at       TIMESTAMP  NOT NULL,
+  _updated_at       TIMESTAMP  NOT NULL
+)
+PARTITION BY DATE(_created_at)
+CLUSTER BY state, zip_code;</programlisting>
+</para>
+</formalpara>
+<formalpara>
+<title>Silver Schema: <literal>silver_acquisitions.defendants</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">CREATE TABLE silver_acquisitions.defendants (
+  defendant_id          STRING  NOT NULL,  -- PK: generated surrogate key
+  case_id               STRING  NOT NULL,  -- FK → silver_acquisitions.cases
+  defendant_name_token  STRING,            -- TOKENIZED (SHA-256). Raw name in Bronze only.
+  defendant_role        STRING,            -- OWNER | RESPONDENT | GUARANTOR
+  extraction_confidence FLOAT64,           -- ORM confidence score (0.0–1.0)
+  _source_pdf           STRING,            -- GCS path of the originating PDF
+  _created_at           TIMESTAMP NOT NULL,
+  _updated_at           TIMESTAMP NOT NULL
+)
+PARTITION BY DATE(_created_at)
+CLUSTER BY case_id;</programlisting>
+</para>
+</formalpara>
+</section>
+<section xml:id="_gold_layer_kimball_star_schema_analytics">
+<title>Gold Layer: Kimball Star Schema (Analytics)</title>
+<simpara>The Gold Analytics dataset provides fast, pre-joined data for BI dashboards,
+ad-hoc SQL, and cross-domain reporting. The Kimball Star Schema is the right model
+here because it is optimized for the analytical read pattern: filter on dimension
+attributes, aggregate fact measures.</simpara>
+<simpara><emphasis role="strong">Why Star Schema?</emphasis></simpara>
+<simpara>A <emphasis role="strong">Snowflake Schema</emphasis> further normalizes dimension tables — for example, splitting
+<literal>dim_properties</literal> into <literal>dim_properties → dim_addresses → dim_zip_codes</literal>. This is
+appropriate when:</simpara>
+<orderedlist numeration="arabic">
+<listitem>
+<simpara>Dimension tables are enormous (tens of millions of rows) and storage is a primary constraint.</simpara>
+</listitem>
+<listitem>
+<simpara>Sub-dimensions have deep, independent hierarchies that change at different frequencies
+(e.g., a product hierarchy with category → subcategory → brand).</simpara>
+</listitem>
+</orderedlist>
+<simpara>For this project, neither condition applies:</simpara>
+<itemizedlist>
+<listitem>
+<simpara>Dimension tables (cases, properties, defendants) are modest in row count.</simpara>
+</listitem>
+<listitem>
+<simpara>No deep sub-dimension hierarchies exist in the acquisitions domain.</simpara>
+</listitem>
+<listitem>
+<simpara>Each additional <literal>JOIN</literal> in a Snowflake query increases Looker rendering time and
+BigQuery slot consumption for every query an analyst runs.</simpara>
+</listitem>
+</itemizedlist>
+<simpara><emphasis role="strong">Star Schema delivers:</emphasis> fewer joins, faster Looker queries, and column names that
+match the business vocabulary used in reports.</simpara>
+<formalpara>
+<title>Gold Star Schema (Acquisitions Domain)</title>
+<para>
+<screen linenumbering="unnumbered">            [dim_cases]
+                 |
+                 | case_id (FK)
+                 |
+[dim_properties] ─── [fact_distressed_acquisitions] ─── [dim_defendants]
+  property_id (FK)         fact_id (PK)                  defendant_id (FK)
+                           case_id
+                           property_id
+                           defendant_id
+                           delinquent_amount   ← measures
+                           assessed_value
+                           days_since_filing
+                           acquisition_score
+                           reporting_date</screen>
+</para>
+</formalpara>
+<formalpara>
+<title>Gold Table: <literal>gold_acquisitions.fact_distressed_acquisitions</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">CREATE TABLE gold_acquisitions.fact_distressed_acquisitions (
+  fact_id              STRING  NOT NULL,
+  -- Dimension keys
+  case_id              STRING  NOT NULL,   -- → dim_cases
+  property_id          STRING  NOT NULL,   -- → dim_properties
+  defendant_id         STRING  NOT NULL,   -- → dim_defendants
+  -- Measures
+  delinquent_amount    NUMERIC,
+  assessed_value       NUMERIC,
+  tax_year             INT64,
+  days_since_filing    INT64,              -- CURRENT_DATE - filing_date
+  acquisition_score    FLOAT64,            -- composite scoring model output (0–100)
+  -- Partitioning
+  reporting_date       DATE    NOT NULL,
+  _refreshed_at        TIMESTAMP NOT NULL
+)
+PARTITION BY reporting_date
+CLUSTER BY case_id;</programlisting>
+</para>
+</formalpara>
+<formalpara>
+<title>Gold Table: <literal>gold_acquisitions.dim_cases</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">CREATE TABLE gold_acquisitions.dim_cases (
+  case_id        STRING  NOT NULL,
+  case_name      STRING,
+  court_district STRING,
+  filing_date    DATE,
+  status         STRING,
+  status_label   STRING   -- "Active — Under Review", "Settled", "Dismissed"
+);</programlisting>
+</para>
+</formalpara>
+<formalpara>
+<title>Gold Table: <literal>gold_acquisitions.dim_properties</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">CREATE TABLE gold_acquisitions.dim_properties (
+  property_id    STRING  NOT NULL,
+  parcel_id      STRING,
+  full_address   STRING,           -- denormalized from Silver for display
+  city           STRING,
+  state          STRING,
+  zip_code       STRING,
+  assessed_value NUMERIC,
+  latitude       FLOAT64,
+  longitude      FLOAT64
+);</programlisting>
+</para>
+</formalpara>
+<formalpara>
+<title>Gold Table: <literal>gold_acquisitions.dim_defendants</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">CREATE TABLE gold_acquisitions.dim_defendants (
+  defendant_id         STRING  NOT NULL,
+  defendant_name_token STRING,            -- TOKENIZED — PII
+  defendant_role       STRING,
+  case_id              STRING             -- denormalized for convenience
+);</programlisting>
+</para>
+</formalpara>
+</section>
+</section>
+<section xml:id="_data_quality_framework">
+<title>Data Quality Framework</title>
+<simpara>All Silver and Gold tables are checked by automated Dataplex DQ tasks after each
+pipeline run. Failures quarantine the affected records in a <literal>_quarantine</literal> table and
+trigger an alert before the bad data reaches Gold.</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="25*"/>
+<colspec colname="col_2" colwidth="50*"/>
+<colspec colname="col_3" colwidth="25*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Check Type</entry>
+<entry align="left" valign="top">Description</entry>
+<entry align="left" valign="top">Layer</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>Not Null</simpara></entry>
+<entry align="left" valign="top"><simpara>Critical columns must never be null: <literal>case_id</literal>, <literal>filing_date</literal>, <literal>property_id</literal>,
+ <literal>defendant_id</literal>.</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver, Gold</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Uniqueness</simpara></entry>
+<entry align="left" valign="top"><simpara>Primary key columns must contain unique values per partition.</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver, Gold</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Referential Integrity</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>case_id</literal> in <literal>properties</literal> and <literal>defendants</literal> must match a valid <literal>case_id</literal> in <literal>cases</literal>.</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Value Range</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>delinquent_amount &gt; 0</literal>, <literal>assessed_value &gt; 0</literal>,
+ <literal>extraction_confidence BETWEEN 0 AND 1</literal>.</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver, Gold</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Freshness</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>max(_updated_at)</literal> must be within the expected refresh window after each DAG run.</simpara></entry>
+<entry align="left" valign="top"><simpara>Gold</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Row Count Anomaly</simpara></entry>
+<entry align="left" valign="top"><simpara>Daily row count must not deviate more than 30% from the 7-day moving average.</simpara></entry>
+<entry align="left" valign="top"><simpara>All</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>PII Token Validation</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>defendant_name_token</literal> must never contain a raw name pattern. Checked via regex on
+ Silver and Gold. If a raw name is detected, the pipeline fails and alerts.</simpara></entry>
+<entry align="left" valign="top"><simpara>Silver, Gold</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_data_retention_policy">
+<title>Data Retention Policy</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="40*"/>
+<colspec colname="col_2" colwidth="20*"/>
+<colspec colname="col_3" colwidth="40*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Layer</entry>
+<entry align="left" valign="top">Retention Period</entry>
+<entry align="left" valign="top">Mechanism</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>Bronze (raw)</simpara></entry>
+<entry align="left" valign="top"><simpara>7 years</simpara></entry>
+<entry align="left" valign="top"><simpara>GCS Lifecycle rule — transition to COLDLINE after 12 months.
+ BigQuery Bronze tables retained for 7 years via table expiration.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Silver (cleansed)</simpara></entry>
+<entry align="left" valign="top"><simpara>3 years</simpara></entry>
+<entry align="left" valign="top"><simpara>BigQuery table expiration — older partitions dropped automatically.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Gold (aggregated)</simpara></entry>
+<entry align="left" valign="top"><simpara>5 years</simpara></entry>
+<entry align="left" valign="top"><simpara>BigQuery table expiration; older partitions dropped after 5 years.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Bad data / Quarantine</simpara></entry>
+<entry align="left" valign="top"><simpara>90 days</simpara></entry>
+<entry align="left" valign="top"><simpara>GCS Lifecycle delete; retained for investigation and selective replay.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_data_domains">
+<title>Data Domains</title>
+<simpara>Data is logically organized by business domain. Each domain owns its Silver datasets
+and contributes to shared Gold datasets:</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="16.6666*"/>
+<colspec colname="col_2" colwidth="33.3333*"/>
+<colspec colname="col_3" colwidth="50.0001*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Domain</entry>
+<entry align="left" valign="top">Owned By</entry>
+<entry align="left" valign="top">Key Entities</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Acquisitions</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Data Engineering / Legal Operations</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>cases</literal>, <literal>properties</literal>, <literal>defendants</literal>, <literal>fact_distressed_acquisitions</literal>,
+ <literal>crm_distressed_export</literal></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Sales / CRM</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Sales Operations</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>customers</literal>, <literal>orders</literal>, <literal>opportunities</literal></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Finance</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Finance Team</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>transactions</literal>, <literal>invoices</literal>, <literal>cost_centers</literal>, <literal>budgets</literal></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Marketing</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Marketing Team</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>campaigns</literal>, <literal>leads</literal>, <literal>channel_performance</literal>, <literal>attribution</literal></simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+</chapter>
+<chapter xml:id="implementation">
+<title>Implementation Deep Dive</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>This chapter is aimed at data engineers and cloud architects who need to understand
+the <emphasis role="strong">how</emphasis> behind the implementation. It walks through a complete, production-grade
+end-to-end pipeline for the Distressed Acquisitions use case — from the first DAG
+that discovers new court cases all the way to the CRM export that enables client
+outreach. It also covers infrastructure setup, pipeline patterns, testing, and
+operational practices. <emphasis role="strong">Non-technical stakeholders can skip this chapter.</emphasis></simpara>
+</sidebar>
+<section xml:id="_infrastructure_as_code">
+<title>Infrastructure as Code</title>
+<simpara>All GCP resources are provisioned using <emphasis role="strong">Terraform</emphasis>. This means the entire
+infrastructure is version-controlled, reviewable, repeatable, and auditable.</simpara>
+<section xml:id="_repository_structure">
+<title>Repository Structure</title>
+<screen linenumbering="unnumbered">infra/
+├── environments/
+│   ├── dev/
+│   │   └── terraform.tfvars
+│   ├── staging/
+│   │   └── terraform.tfvars
+│   └── prod/
+│       └── terraform.tfvars
+├── modules/
+│   ├── storage/          &lt;- GCS buckets, lifecycle rules, CMEK
+│   ├── bigquery/         &lt;- Datasets, tables, authorized views
+│   ├── dataflow/         &lt;- Template staging bucket, service accounts
+│   ├── pubsub/           &lt;- Topics, subscriptions, dead-letter queues
+│   ├── composer/         &lt;- Cloud Composer environment
+│   └── iam/              &lt;- Custom roles, service account bindings
+└── main.tf</screen>
+</section>
+<section xml:id="_key_terraform_patterns">
+<title>Key Terraform Patterns</title>
+<programlisting language="hcl" linenumbering="unnumbered"># Bronze bucket with lifecycle management
+resource "google_storage_bucket" "bronze" {
+  name          = "${var.project_id}-bronze-${var.environment}"
+  location      = var.region
+  storage_class = "STANDARD"
+
+  versioning { enabled = true }
+
+  lifecycle_rule {
+    condition { age = 90 }
+    action    { type          = "SetStorageClass"
+                storage_class = "NEARLINE" }
+  }
+
+  lifecycle_rule {
+    condition { age = 2555 }   # 7 years
+    action    { type = "Delete" }
+  }
+
+  encryption {
+    default_kms_key_name = var.kms_key_id
+  }
+}</programlisting>
+</section>
+</section>
+<section xml:id="_pipeline_development">
+<title>Pipeline Development</title>
+<section xml:id="_technology_choice_apache_beam_on_dataflow">
+<title>Technology Choice: Apache Beam on Dataflow</title>
+<simpara>All ETL pipelines are written in <emphasis role="strong">Python</emphasis> using the Apache Beam SDK, executed on
+the managed Dataflow runner.</simpara>
+<simpara><emphasis role="strong">Why Apache Beam?</emphasis></simpara>
+<itemizedlist>
+<listitem>
+<simpara>Write once, run on Dataflow (cloud-managed, auto-scaled) or DirectRunner (local testing).</simpara>
+</listitem>
+<listitem>
+<simpara>Unified API for both batch and streaming — same codebase, different flags.</simpara>
+</listitem>
+<listitem>
+<simpara>Rich ecosystem of built-in I/O connectors (BigQuery, GCS, Pub/Sub, JDBC).</simpara>
+</listitem>
+</itemizedlist>
+</section>
+<section xml:id="_batch_ingestion_pipeline_pattern">
+<title>Batch Ingestion Pipeline Pattern</title>
+<programlisting language="python" linenumbering="unnumbered">import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions
+
+def run(source_path: str, dest_table: str, pipeline_args: list):
+    options = PipelineOptions(pipeline_args)
+
+    with beam.Pipeline(options=options) as p:
+        (
+            p
+            | "ReadFromGCS"    &gt;&gt; beam.io.ReadFromParquet(source_path)
+            | "Validate"       &gt;&gt; beam.ParDo(ValidateRow())
+            | "Transform"      &gt;&gt; beam.ParDo(TransformRow())
+            | "WriteToBQ"      &gt;&gt; beam.io.WriteToBigQuery(
+                dest_table,
+                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
+            )
+        )
+
+class ValidateRow(beam.DoFn):
+    def process(self, element):
+        if element.get("id") is None:
+            return   # route to dead-letter — do not yield
+        yield element</programlisting>
+</section>
+</section>
+<section xml:id="_orchestration_with_cloud_composer">
+<title>Orchestration with Cloud Composer</title>
+<section xml:id="_dag_design_principles">
+<title>DAG Design Principles</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="2">
+<colspec colname="col_1" colwidth="25*"/>
+<colspec colname="col_2" colwidth="75*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Principle</entry>
+<entry align="left" valign="top">Implementation</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">One DAG per concern</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>Each DAG has a single responsibility: discover, ingest, extract, or trigger.
+Limits blast radius — a failing PDF extraction DAG does not block case discovery or
+property ingestion.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Sensor before extract</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>GCS or Pub/Sub sensors wait for source data availability before triggering work.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Idempotent tasks</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>All tasks use date-parameterized paths and <literal>WRITE_APPEND</literal> + deduplication
+(via <literal>QUALIFY ROW_NUMBER()</literal> in Dataform) for safe reruns.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">Alerting on failure</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara><literal>on_failure_callback</literal> sends to PagerDuty or Slack for every DAG.</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><emphasis role="strong">No task-level secrets</emphasis></simpara></entry>
+<entry align="left" valign="top"><simpara>All credentials fetched from Secret Manager at runtime. Never stored in
+DAG code, Airflow Variables, or environment variables.</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+</section>
+<section xml:id="_testing_strategy">
+<title>Testing Strategy</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="20*"/>
+<colspec colname="col_2" colwidth="40*"/>
+<colspec colname="col_3" colwidth="40*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Test Type</entry>
+<entry align="left" valign="top">Scope</entry>
+<entry align="left" valign="top">Tool</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>Unit tests</simpara></entry>
+<entry align="left" valign="top"><simpara>Individual transform functions, ORM extraction regex, validation logic</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>pytest</literal> + Apache Beam <literal>DirectRunner</literal></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Integration tests</simpara></entry>
+<entry align="left" valign="top"><simpara>End-to-end pipeline on a small synthetic dataset in the <literal>dev</literal> GCP project</simpara></entry>
+<entry align="left" valign="top"><simpara>Dataflow + pytest + BigQuery test datasets</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Scraper tests</simpara></entry>
+<entry align="left" valign="top"><simpara>Mock HTTP responses for the court records API and property GIS API</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>pytest</literal> + <literal>responses</literal> library (HTTP mocking)</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Data quality tests</simpara></entry>
+<entry align="left" valign="top"><simpara>Automated checks on Silver and Gold tables post-load</simpara></entry>
+<entry align="left" valign="top"><simpara>Dataplex DQ tasks + Dataform <literal>assertions</literal> blocks</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Contract tests</simpara></entry>
+<entry align="left" valign="top"><simpara>Schema compatibility between Pub/Sub message payload and Bronze table schema</simpara></entry>
+<entry align="left" valign="top"><simpara>Avro schema validation at publish time</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_configuration_management">
+<title>Configuration Management</title>
+<simpara>All pipeline configuration is externalized. No hardcoded values in pipeline code.</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="2">
+<colspec colname="col_1" colwidth="50*"/>
+<colspec colname="col_2" colwidth="50*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Configuration Type</entry>
+<entry align="left" valign="top">Storage Location</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara>Pipeline runtime parameters (project, region, bucket names)</simpara></entry>
+<entry align="left" valign="top"><simpara>Airflow Variables (stored encrypted in Composer&#8217;s managed Airflow DB)</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Credentials and secrets (API keys, session cookies)</simpara></entry>
+<entry align="left" valign="top"><simpara>Google Secret Manager — accessed at runtime, never stored in DAG or scraper code</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Schema definitions</simpara></entry>
+<entry align="left" valign="top"><simpara>GCS bucket <literal>gs://{project}-config/schemas/</literal></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Data quality rule definitions</simpara></entry>
+<entry align="left" valign="top"><simpara>YAML files in GCS <literal>gs://{project}-config/dq-rules/</literal> — managed by Dataplex</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara>Dataform workspace configuration</simpara></entry>
+<entry align="left" valign="top"><simpara>Dataform repository in Cloud Source Repositories (linked to Git)</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_cicd_pipeline">
+<title>CI/CD Pipeline</title>
+<screen linenumbering="unnumbered">[Git Push]
+     |
+     v
+[Cloud Build Trigger]
+     |
+     +-- Lint (flake8, pylint)
+     +-- Unit tests (pytest --runner DirectRunner)
+     +-- Scraper tests (pytest with mock HTTP responses)
+     +-- Dataform compilation check (dataform compile)
+     +-- Terraform plan (infrastructure diff)
+     |
+     v (on merge to main)
+[Cloud Build: Deploy]
+     |
+     +-- Terraform apply (dev → staging → prod with approvals)
+     +-- Dataflow Flex Template build + push to Artifact Registry
+     +-- Cloud Run scraper images build + push to Artifact Registry
+     +-- Airflow DAG sync to Cloud Composer GCS bucket
+     +-- Dataform workspace push to Cloud Source Repositories</screen>
+</section>
+<section xml:id="_operational_runbooks">
+<title>Operational Runbooks</title>
+<simpara>Runbooks are maintained for the following scenarios:</simpara>
+<itemizedlist>
+<listitem>
+<simpara><emphasis role="strong">Pipeline Failure &amp; Replay</emphasis> — Steps to identify the failed task, fix the root
+cause, and re-run from the correct checkpoint. For the acquisitions pipeline,
+Bronze tables can be replayed from the original Pub/Sub message replay window
+(7-day retention) or from the raw GCS PDFs in Bronze.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Bad Data Investigation</emphasis> — How to query the <literal>_quarantine</literal> tables and the
+<literal>extraction_confidence</literal> field in <literal>bronze_acquisitions.defendants_raw</literal> to identify
+failed PDF extractions. Low-confidence rows are kept in Bronze for manual review
+and can be re-extracted after updating the ORM pattern.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Schema Change Rollout</emphasis> — Process for evolving a Bronze or Silver schema without
+breaking downstream consumers. Dataform SQLX models handle additive changes
+incrementally; backward-incompatible changes require a migration run with
+<literal>fully_refresh_incremental_tables_enabled: true</literal>.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Cost Spike Investigation</emphasis> — How to identify the BigQuery slot or Dataflow job
+responsible for an unexpected cost increase using the GCP Billing console and
+INFORMATION_SCHEMA.JOBS_BY_PROJECT.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">Disaster Recovery</emphasis> — Steps to restore a corrupted Gold table using Silver as
+the source of re-derivation. All Gold models are fully re-computable from Silver
+with a single Dataform full refresh. Silver is re-computable from Bronze.</simpara>
+</listitem>
+<listitem>
+<simpara><emphasis role="strong">PDF Re-extraction</emphasis> — When the ORM extractor is updated (e.g., improved regex or
+a new NLP model), historical Bronze PDFs in GCS can be reprocessed by triggering
+<literal>dag_extract_pdf_to_bronze</literal> with a historical date range and setting Dataform to
+full refresh for <literal>defendants</literal> and all downstream Gold models.</simpara>
+</listitem>
+</itemizedlist>
+</section>
+<section xml:id="distressed-acquisitions-pipeline">
+<title>End-to-End Pipeline: Distressed Acquisitions Example</title>
+<simpara>This section walks through a complete, annotated example of the Distressed
+Acquisitions pipeline. Each case in this domain represents a property whose owner
+has failed to pay property taxes, and against whom a court case has been filed —
+making it a potential acquisition opportunity.</simpara>
+<simpara>The pipeline automates discovery, data ingestion from multiple scraper sources,
+Bronze-layer extraction of unstructured PDFs, Silver-layer normalization, Gold-layer
+modeling, and CRM delivery.</simpara>
+<section xml:id="_pipeline_architecture_overview">
+<title>Pipeline Architecture Overview</title>
+<simpara>The full pipeline involves four independent DAGs, two Cloud Run scrapers, one
+Dataflow extraction job, and a Dataform project structured around the
+<xref linkend="data-modeling-strategy"/> described in the previous chapter.</simpara>
+<screen linenumbering="unnumbered">┌─────────────────────────────────────────────────────────────────────┐
+│  DAG 1: dag_discover_distressed_cases                               │
+│  Schedule: nightly 02:00 UTC                                        │
+│  → Polls court records API for new cases                            │
+│  → Writes case metadata to bronze_acquisitions.cases_raw            │
+│  → Publishes {case_id, case_name} to Pub/Sub                        │
+│                Topic: distressed-cases-new                          │
+└───────────────────────────┬─────────────────────────────────────────┘
+                            │
+              ┌─────────────┴──────────────┐
+              │  (Both subscribe to topic) │
+              ▼                            ▼
+┌─────────────────────────┐  ┌──────────────────────────────────┐
+│  Cloud Run               │  │  Cloud Run                       │
+│  scraper_property_info   │  │  scraper_defendant_docs          │
+│                          │  │                                  │
+│  Input:  case_name       │  │  Input:  case_name               │
+│  Scrapes GIS/tax API     │  │  Downloads court document PDF    │
+│  Output: structured JSON │  │  Uploads PDF to GCS Bronze       │
+│  Publishes to:           │  │  Publishes {case_id, gcs_path}   │
+│  scraper-property-results│  │  to: scraper-pdf-ready           │
+└────────────┬────────────┘  └──────────────┬───────────────────┘
+             │                              │
+             ▼                              ▼
+┌─────────────────────────┐  ┌──────────────────────────────────┐
+│  DAG 2:                 │  │  DAG 3:                          │
+│  dag_ingest_scraper_    │  │  dag_extract_pdf_to_bronze       │
+│  results                │  │                                  │
+│                         │  │  GCS Sensor: new PDFs detected   │
+│  Pulls Pub/Sub messages │  │  Triggers Dataflow ORM job       │
+│  Writes to BigQuery:    │  │  Writes to BigQuery:             │
+│  · bronze.properties_raw│  │  · bronze.defendants_raw         │
+└────────────┬────────────┘  └──────────────┬───────────────────┘
+             │                              │
+             └──────────────┬───────────────┘
+                            │
+                            ▼  (all 3 bronze tables populated)
+             ┌──────────────────────────────┐
+             │  DAG 4:                      │
+             │  dag_trigger_dataform        │
+             │  Verifies all bronze tables  │
+             │  have today's rows, then     │
+             │  initiates Dataform run      │
+             └──────────────┬───────────────┘
+                            │
+                            ▼
+             ┌──────────────────────────────┐
+             │  Dataform                    │
+             │  Bronze → Silver (3NF)       │
+             │  Silver → Gold Star Schema   │
+             │  Silver → Gold OBT           │
+             └──────────────┬───────────────┘
+                            │
+                            ▼
+             ┌──────────────────────────────┐
+             │  CRM Export                  │
+             │  gold.crm_distressed_export  │
+             │  Synced by Cloud Run CRM job │
+             └──────────────────────────────┘</screen>
+</section>
+<section xml:id="_pubsub_topics_and_subscriptions">
+<title>Pub/Sub Topics and Subscriptions</title>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="4">
+<colspec colname="col_1" colwidth="22.2222*"/>
+<colspec colname="col_2" colwidth="22.2222*"/>
+<colspec colname="col_3" colwidth="22.2222*"/>
+<colspec colname="col_4" colwidth="33.3334*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Topic</entry>
+<entry align="left" valign="top">Publisher</entry>
+<entry align="left" valign="top">Subscriber(s)</entry>
+<entry align="left" valign="top">Payload Shape</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><literal>distressed-cases-new</literal></simpara></entry>
+<entry align="left" valign="top"><simpara>DAG 1</simpara></entry>
+<entry align="left" valign="top"><simpara>Scraper A (push), Scraper B (push)</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>{"case_id": "TX-2025-042", "case_name": "2025-TX-HARRIS-0042",
+   "court_district": "Harris County", "filing_date": "2025-11-15"}</literal></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><literal>scraper-property-results</literal></simpara></entry>
+<entry align="left" valign="top"><simpara>Scraper A (Cloud Run)</simpara></entry>
+<entry align="left" valign="top"><simpara>DAG 2 (pull subscription)</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>{"case_id": "TX-2025-042", "parcel_id": "1234-AB", "address_raw": "123 Main St, Houston, TX 77002",
+   "assessed_value_raw": "$245,000", "delinquent_amount_raw": "$8,300", &#8230;&#8203;}</literal></simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><literal>scraper-pdf-ready</literal></simpara></entry>
+<entry align="left" valign="top"><simpara>Scraper B (Cloud Run)</simpara></entry>
+<entry align="left" valign="top"><simpara>DAG 3 (GCS sensor + Dataflow, subscription for confirmation)</simpara></entry>
+<entry align="left" valign="top"><simpara><literal>{"case_id": "TX-2025-042",
+   "gcs_path": "gs://mycompany-bronze-prod/acquisitions/defendants-pdfs/&#8230;&#8203;/TX-2025-042.pdf"}</literal></simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_step_1_dag_1_case_discovery">
+<title>Step 1 — DAG 1: Case Discovery</title>
+<simpara>DAG 1 runs nightly. It queries the court records source for cases filed since the
+last successful run. For each new case, it publishes a Pub/Sub message <emphasis role="strong">and</emphasis> writes
+the case metadata directly to <literal>bronze_acquisitions.cases_raw</literal> in the same task — this
+avoids a separate DAG step for case records and keeps the case row as close as possible
+in time to the Pub/Sub message that triggers the scrapers.</simpara>
+<note>
+<simpara>All credentials (API keys, session tokens) are fetched at runtime from Google Secret
+Manager. No secrets are stored in DAG code, Airflow Variables, or environment variables.</simpara>
+</note>
+<formalpara>
+<title><literal>dags/dag_discover_distressed_cases.py</literal></title>
+<para>
+<programlisting language="python" linenumbering="unnumbered">from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.providers.google.cloud.hooks.pubsub import PubSubHook
+from airflow.models import Variable
+from google.cloud import bigquery, secretmanager
+import json, logging
+
+PROJECT_ID     = Variable.get("gcp_project_id")
+BRONZE_DATASET = "bronze_acquisitions"
+PUBSUB_TOPIC   = "distressed-cases-new"
+COURT_API_URL  = Variable.get("court_api_base_url")
+
+
+def _get_secret(project_id: str, secret_id: str) -&gt; str:
+    client = secretmanager.SecretManagerServiceClient()
+    name   = f"projects/{project_id}/secrets/{secret_id}/versions/latest"
+    return client.access_secret_version(name=name).payload.data.decode()
+
+
+def discover_and_publish(execution_date, **context):
+    """
+    Query the court records API for new distressed-acquisition cases.
+    Write raw case rows to BigQuery Bronze and publish each case to Pub/Sub.
+    """
+    import requests
+
+    api_key    = _get_secret(PROJECT_ID, "court-api-key")
+    since_date = (execution_date - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    response = requests.get(
+        f"{COURT_API_URL}/cases",
+        params={"filed_since": since_date, "status": "ACTIVE"},
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    new_cases = response.json().get("cases", [])
+
+    if not new_cases:
+        logging.info("No new distressed cases for %s — nothing to do.", since_date)
+        return
+
+    logging.info("Found %d new cases. Publishing to Pub/Sub and writing to Bronze.", len(new_cases))
+
+    pubsub     = PubSubHook(project_id=PROJECT_ID)
+    bq_client  = bigquery.Client(project=PROJECT_ID)
+    table_ref  = f"{PROJECT_ID}.{BRONZE_DATASET}.cases_raw"
+    bronze_rows = []
+
+    for case in new_cases:
+        # 1. Publish to Pub/Sub — scrapers will pick this up immediately
+        message_body = {
+            "case_id":        case["id"],
+            "case_name":      case["case_number"],
+            "court_district": case["district"],
+            "filing_date":    case["filed_date"],
+        }
+        pubsub.publish(
+            topic=PUBSUB_TOPIC,
+            messages=[{"data": json.dumps(message_body).encode()}],
+        )
+
+        # 2. Write raw case record directly to BigQuery Bronze
+        bronze_rows.append({
+            "case_name":         case["case_number"],
+            "case_id":           case["id"],
+            "court_district":    case["district"],
+            "filing_date":       case["filed_date"],   # raw string, no casting
+            "status":            case["status"],
+            "raw_payload":       json.dumps(case),
+            "_ingested_at":      datetime.utcnow().isoformat() + "Z",
+            "_source":           "court_api_v1",
+            "_pipeline_run_id":  context["run_id"],
+        })
+
+    errors = bq_client.insert_rows_json(table_ref, bronze_rows)
+    if errors:
+        raise RuntimeError(f"BigQuery insert errors: {errors}")
+
+    logging.info(
+        "Wrote %d rows to %s and published %d Pub/Sub messages.",
+        len(bronze_rows), table_ref, len(new_cases),
+    )
+
+
+with DAG(
+    dag_id="dag_discover_distressed_cases",
+    schedule_interval="0 2 * * *",
+    start_date=datetime(2025, 1, 1),
+    catchup=False,
+    default_args={
+        "retries":      3,
+        "retry_delay":  timedelta(minutes=5),
+    },
+    on_failure_callback=lambda ctx: alert_on_failure(ctx),
+    tags=["acquisitions", "bronze", "discovery"],
+) as dag:
+
+    PythonOperator(
+        task_id="discover_and_publish_cases",
+        python_callable=discover_and_publish,
+    )</programlisting>
+</para>
+</formalpara>
+</section>
+<section xml:id="_step_2_cloud_run_scrapers">
+<title>Step 2 — Cloud Run Scrapers</title>
+<simpara>Both scrapers are deployed as independent Cloud Run services. They are registered as
+Pub/Sub push-subscription endpoints on <literal>distressed-cases-new</literal> and execute
+<emphasis role="strong">concurrently and independently</emphasis> — neither waits for the other.</simpara>
+<section xml:id="_scraper_a_property_information_structured_json_output">
+<title>Scraper A: Property Information (Structured JSON Output)</title>
+<simpara>This scraper queries a property tax / GIS API using the case name to retrieve
+structured property records. It publishes results to <literal>scraper-property-results</literal>.</simpara>
+<formalpara>
+<title><literal>scrapers/scraper_property_info/main.py</literal></title>
+<para>
+<programlisting language="python" linenumbering="unnumbered">import base64, json, logging, os
+import requests
+from flask import Flask, request
+from google.cloud import pubsub_v1, secretmanager
+
+app = Flask(__name__)
+
+PROJECT_ID   = os.environ["GCP_PROJECT_ID"]
+OUTPUT_TOPIC = f"projects/{PROJECT_ID}/topics/scraper-property-results"
+PROPERTY_API = os.environ["PROPERTY_API_BASE_URL"]
+
+
+def _get_secret(secret_id: str) -&gt; str:
+    client = secretmanager.SecretManagerServiceClient()
+    name   = f"projects/{PROJECT_ID}/secrets/{secret_id}/versions/latest"
+    return client.access_secret_version(name=name).payload.data.decode()
+
+
+@app.route("/", methods=["POST"])
+def handle_pubsub_push():
+    """Receives a Pub/Sub push message containing the new case details."""
+    envelope = request.get_json(silent=True)
+    if not envelope or "message" not in envelope:
+        return "Bad Request: missing Pub/Sub envelope", 400
+
+    payload   = json.loads(base64.b64decode(envelope["message"]["data"]).decode())
+    case_id   = payload["case_id"]
+    case_name = payload["case_name"]
+
+    logging.info("Scraping property info for case: %s", case_name)
+
+    api_key  = _get_secret("property-api-key")
+    response = requests.get(
+        f"{PROPERTY_API}/search",
+        params={"case_reference": case_name},
+        headers={"X-API-Key": api_key},
+        timeout=30,
+    )
+
+    if response.status_code == 404:
+        logging.warning("No property record found for case %s — skipping.", case_name)
+        return "Not found", 200
+
+    response.raise_for_status()
+    prop = response.json()
+
+    result = {
+        "case_id":               case_id,
+        "parcel_id":             prop.get("parcel_id"),
+        "address_raw":           prop.get("address"),
+        "owner_name_raw":        prop.get("owner_name"),
+        "assessed_value_raw":    str(prop.get("assessed_value", "")),
+        "tax_year_raw":          str(prop.get("tax_year", "")),
+        "delinquent_amount_raw": str(prop.get("delinquent_amount", "")),
+        "latitude":              prop.get("latitude"),
+        "longitude":             prop.get("longitude"),
+        "_source":               "property_gis_api_v2",
+    }
+
+    publisher = pubsub_v1.PublisherClient()
+    publisher.publish(OUTPUT_TOPIC, json.dumps(result).encode())
+    logging.info("Published property result for case %s.", case_id)
+    return "OK", 200</programlisting>
+</para>
+</formalpara>
+</section>
+<section xml:id="_scraper_b_defendant_court_documents_unstructured_pdf_output">
+<title>Scraper B: Defendant Court Documents (Unstructured PDF Output)</title>
+<simpara>This scraper downloads a PDF court-filing document for the given case from the
+public records portal. It stores the PDF <emphasis role="strong">unmodified</emphasis> in the GCS Bronze bucket (raw
+preservation) and publishes a path notification to <literal>scraper-pdf-ready</literal> so that DAG 3
+can trigger PDF extraction when it detects new files.</simpara>
+<formalpara>
+<title><literal>scrapers/scraper_defendant_docs/main.py</literal></title>
+<para>
+<programlisting language="python" linenumbering="unnumbered">import base64, json, logging, os
+from datetime import datetime
+import requests
+from flask import Flask, request
+from google.cloud import pubsub_v1, secretmanager, storage
+
+app = Flask(__name__)
+
+PROJECT_ID    = os.environ["GCP_PROJECT_ID"]
+BRONZE_BUCKET = os.environ["BRONZE_BUCKET_NAME"]      # "mycompany-bronze-prod"
+OUTPUT_TOPIC  = f"projects/{PROJECT_ID}/topics/scraper-pdf-ready"
+COURT_DOCS_URL = os.environ["COURT_DOCUMENTS_BASE_URL"]
+
+
+def _get_secret(secret_id: str) -&gt; str:
+    client = secretmanager.SecretManagerServiceClient()
+    name   = f"projects/{PROJECT_ID}/secrets/{secret_id}/versions/latest"
+    return client.access_secret_version(name=name).payload.data.decode()
+
+
+@app.route("/", methods=["POST"])
+def handle_pubsub_push():
+    envelope = request.get_json(silent=True)
+    if not envelope or "message" not in envelope:
+        return "Bad Request", 400
+
+    payload   = json.loads(base64.b64decode(envelope["message"]["data"]).decode())
+    case_id   = payload["case_id"]
+    case_name = payload["case_name"]
+
+    logging.info("Downloading court document for case: %s", case_name)
+
+    session_cookie = _get_secret("court-portal-session-cookie")
+    response = requests.get(
+        f"{COURT_DOCS_URL}/document",
+        params={"case_number": case_name, "doc_type": "FILING_NOTICE"},
+        headers={"Cookie": session_cookie},
+        timeout=60,
+        stream=True,
+    )
+
+    if response.status_code == 404:
+        logging.warning("No document found for case %s — skipping.", case_name)
+        return "Not found", 200
+
+    response.raise_for_status()
+
+    # Build a Hive-partitioned GCS path for the PDF
+    now = datetime.utcnow()
+    gcs_object = (
+        f"acquisitions/defendants-pdfs/"
+        f"year={now.year}/month={now.month:02d}/day={now.day:02d}/"
+        f"{case_id}.pdf"
+    )
+
+    # Upload the raw PDF to GCS Bronze — no transformation, no parsing here
+    gcs_client = storage.Client()
+    bucket     = gcs_client.bucket(BRONZE_BUCKET)
+    blob       = bucket.blob(gcs_object)
+    blob.upload_from_string(response.content, content_type="application/pdf")
+    logging.info("Uploaded PDF to gs://%s/%s", BRONZE_BUCKET, gcs_object)
+
+    # Notify DAG 3 that a new PDF is ready for extraction
+    notification = {
+        "case_id":  case_id,
+        "gcs_path": f"gs://{BRONZE_BUCKET}/{gcs_object}",
+        "_source":  "court_portal_scraper_v1",
+    }
+    publisher = pubsub_v1.PublisherClient()
+    publisher.publish(OUTPUT_TOPIC, json.dumps(notification).encode())
+    logging.info("Published PDF-ready notification for case %s.", case_id)
+    return "OK", 200</programlisting>
+</para>
+</formalpara>
+</section>
+</section>
+<section xml:id="_step_3_dag_2_bronze_ingestion_structured_property_data">
+<title>Step 3 — DAG 2: Bronze Ingestion (Structured Property Data)</title>
+<simpara>DAG 2 runs every 15 minutes to consume structured property results from the
+<literal>scraper-property-results</literal> Pub/Sub subscription and write them to
+<literal>bronze_acquisitions.properties_raw</literal>. Messages are acknowledged <emphasis role="strong">only after</emphasis> a
+successful BigQuery write to ensure at-least-once delivery semantics.</simpara>
+<formalpara>
+<title><literal>dags/dag_ingest_scraper_results.py</literal></title>
+<para>
+<programlisting language="python" linenumbering="unnumbered">from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.providers.google.cloud.hooks.pubsub import PubSubHook
+from airflow.models import Variable
+from google.cloud import bigquery
+import json, logging
+
+PROJECT_ID      = Variable.get("gcp_project_id")
+SUBSCRIPTION_ID = "scraper-property-results-sub"
+BRONZE_DATASET  = "bronze_acquisitions"
+MAX_MESSAGES    = 500   # cap per run to bound latency
+
+
+def ingest_property_results(**context):
+    """Pull property scraper results from Pub/Sub and write to BigQuery Bronze."""
+    pubsub    = PubSubHook(project_id=PROJECT_ID)
+    bq_client = bigquery.Client(project=PROJECT_ID)
+    table_ref = f"{PROJECT_ID}.{BRONZE_DATASET}.properties_raw"
+
+    messages = pubsub.pull(
+        subscription=SUBSCRIPTION_ID,
+        max_messages=MAX_MESSAGES,
+        return_immediately=True,
+    )
+
+    if not messages:
+        logging.info("No property results queued — nothing to ingest.")
+        return
+
+    rows    = []
+    ack_ids = []
+
+    for msg in messages:
+        data = json.loads(msg["message"]["data"])
+        rows.append({
+            "case_id":               data.get("case_id"),
+            "parcel_id":             data.get("parcel_id"),
+            "address_raw":           data.get("address_raw"),
+            "owner_name_raw":        data.get("owner_name_raw"),
+            "assessed_value_raw":    data.get("assessed_value_raw"),
+            "tax_year_raw":          data.get("tax_year_raw"),
+            "delinquent_amount_raw": data.get("delinquent_amount_raw"),
+            "latitude":              data.get("latitude"),
+            "longitude":             data.get("longitude"),
+            "raw_payload":           json.dumps(data),
+            "_ingested_at":          datetime.utcnow().isoformat() + "Z",
+            "_source":               data.get("_source", "property_gis_api"),
+            "_pipeline_run_id":      context["run_id"],
+            "_pubsub_message_id":    msg["ackId"],
+        })
+        ack_ids.append(msg["ackId"])
+
+    errors = bq_client.insert_rows_json(table_ref, rows)
+    if errors:
+        raise RuntimeError(f"BigQuery insert errors: {errors}")
+
+    logging.info("Inserted %d property rows into BigQuery Bronze.", len(rows))
+
+    # Acknowledge only after confirmed write — prevents double-ingest on retry
+    pubsub.acknowledge(subscription=SUBSCRIPTION_ID, ack_ids=ack_ids)
+    logging.info("Acknowledged %d Pub/Sub messages.", len(ack_ids))
+
+
+with DAG(
+    dag_id="dag_ingest_scraper_results",
+    schedule_interval="*/15 * * * *",   # every 15 minutes
+    start_date=datetime(2025, 1, 1),
+    catchup=False,
+    default_args={
+        "retries":     2,
+        "retry_delay": timedelta(minutes=2),
+    },
+    on_failure_callback=lambda ctx: alert_on_failure(ctx),
+    tags=["acquisitions", "bronze", "ingestion"],
+) as dag:
+
+    PythonOperator(
+        task_id="ingest_property_results_to_bronze",
+        python_callable=ingest_property_results,
+    )</programlisting>
+</para>
+</formalpara>
+</section>
+<section xml:id="_step_4_dag_3_pdf_extraction_to_bronze_unstructured_data">
+<title>Step 4 — DAG 3: PDF Extraction to Bronze (Unstructured Data)</title>
+<simpara>DAG 3 runs hourly. It uses a GCS sensor to detect new PDFs in the Bronze bucket for
+the current day. When new files are found, it launches a Dataflow job that applies
+an ORM-style approach — PDF parsing, regex-based entity extraction, and confidence
+scoring — to produce structured defendant rows and write them to
+<literal>bronze_acquisitions.defendants_raw</literal>.</simpara>
+<note>
+<simpara>The extraction result is written to BigQuery Bronze — not Silver. The extracted text
+still carries uncertainty (the <literal>extraction_confidence</literal> score quantifies this). Silver
+is where validated, deduplicated records live. Bronze absorbs the raw extraction
+output, including low-confidence rows that Dataplex DQ will flag.</simpara>
+</note>
+<formalpara>
+<title><literal>dags/dag_extract_pdf_to_bronze.py</literal></title>
+<para>
+<programlisting language="python" linenumbering="unnumbered">from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.providers.google.cloud.sensors.gcs import GCSObjectsWithPrefixExistenceSensor
+from airflow.providers.google.cloud.operators.dataflow import DataflowCreatePythonJobOperator
+from airflow.models import Variable
+
+PROJECT_ID    = Variable.get("gcp_project_id")
+REGION        = Variable.get("gcp_region")
+BRONZE_BUCKET = Variable.get("bronze_bucket_name")
+PIPELINE_SA   = Variable.get("dataflow_service_account")
+DATAFLOW_TEMP = Variable.get("dataflow_temp_bucket")
+
+
+def _pdf_prefix(execution_date) -&gt; str:
+    return (
+        f"acquisitions/defendants-pdfs/"
+        f"year={execution_date.year}/"
+        f"month={execution_date.month:02d}/"
+        f"day={execution_date.day:02d}/"
+    )
+
+
+with DAG(
+    dag_id="dag_extract_pdf_to_bronze",
+    schedule_interval="0 * * * *",      # hourly
+    start_date=datetime(2025, 1, 1),
+    catchup=False,
+    default_args={
+        "retries":     2,
+        "retry_delay": timedelta(minutes=10),
+    },
+    on_failure_callback=lambda ctx: alert_on_failure(ctx),
+    tags=["acquisitions", "bronze", "extraction", "pdf"],
+) as dag:
+
+    wait_for_pdfs = GCSObjectsWithPrefixExistenceSensor(
+        task_id="wait_for_defendant_pdfs",
+        bucket=BRONZE_BUCKET,
+        prefix="{{ macros.ds_format(ds, '%Y-%m-%d', "
+               "  'acquisitions/defendants-pdfs/year=%Y/month=%m/day=%d/') }}",
+        timeout=3600,
+        poke_interval=120,
+        mode="reschedule",    # releases the worker slot while waiting
+    )
+
+    extract_pdf_to_bronze = DataflowCreatePythonJobOperator(
+        task_id="extract_defendants_from_pdfs",
+        py_file=f"gs://{BRONZE_BUCKET}/pipelines/extract_defendants_pdf.py",
+        job_name="extract-defendants-pdf-{{ ds_nodash }}",
+        dataflow_default_options={
+            "project":               PROJECT_ID,
+            "region":                REGION,
+            "service_account_email": PIPELINE_SA,
+            "temp_location":         f"gs://{DATAFLOW_TEMP}/tmp",
+        },
+        options={
+            "source_bucket":  BRONZE_BUCKET,
+            "source_prefix":  "{{ execution_date.strftime('acquisitions/defendants-pdfs/year=%Y/month=%m/day=%d/') }}",
+            "dest_project":   PROJECT_ID,
+            "dest_dataset":   "bronze_acquisitions",
+            "dest_table":     "defendants_raw",
+        },
+    )
+
+    wait_for_pdfs &gt;&gt; extract_pdf_to_bronze</programlisting>
+</para>
+</formalpara>
+<simpara>The Dataflow job applies an ORM-style mapping: for each PDF, it extracts defendant
+names and roles using regex patterns and writes one row per defendant found.</simpara>
+<formalpara>
+<title><literal>pipelines/extract_defendants_pdf.py</literal></title>
+<para>
+<programlisting language="python" linenumbering="unnumbered">import re, json, io
+from datetime import datetime
+import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions
+from apache_beam.io.gcp import bigquery
+import pdfplumber
+
+
+class ExtractDefendantsFromPDF(beam.DoFn):
+    """
+    ORM-style extractor. Reads one PDF from GCS, applies regex patterns to
+    locate defendant names and roles, and emits one structured row per defendant.
+    Emits a zero-confidence placeholder if no defendants are found, so downstream
+    knows the PDF was processed and not silently skipped.
+    """
+    DEFENDANT_PATTERN = re.compile(
+        r"(?:Defendant|Respondent|Property Owner)[:\s]+"
+        r"([A-Z][a-zA-Z\-']+(?:\s+[A-Z][a-zA-Z\-']+)+)",
+        re.IGNORECASE,
+    )
+    ROLE_PATTERN = re.compile(
+        r"\b(Defendant|Respondent|Property Owner|Guarantor)\b",
+        re.IGNORECASE,
+    )
+
+    def process(self, gcs_path: str):
+        from google.cloud import storage
+        client      = storage.Client()
+        bucket_name, blob_name = gcs_path.replace("gs://", "").split("/", 1)
+        pdf_bytes   = client.bucket(bucket_name).blob(blob_name).download_as_bytes()
+        case_id     = blob_name.rsplit("/", 1)[-1].replace(".pdf", "")
+
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+
+        names = self.DEFENDANT_PATTERN.findall(full_text)
+        roles = self.ROLE_PATTERN.findall(full_text)
+        now   = datetime.utcnow().isoformat() + "Z"
+
+        if not names:
+            yield {
+                "case_id":                case_id,
+                "pdf_gcs_path":           gcs_path,
+                "defendant_name_extracted": None,
+                "defendant_role_extracted": None,
+                "extraction_confidence":  0.0,
+                "raw_text_snippet":       full_text[:500],
+                "_ingested_at":           now,
+                "_extracted_at":          now,
+                "_source_pdf":            gcs_path,
+                "_source":                "pdf_orm_extractor_v1",
+            }
+            return
+
+        for i, name in enumerate(names):
+            role = roles[i].upper() if i &lt; len(roles) else "UNKNOWN"
+            yield {
+                "case_id":                case_id,
+                "pdf_gcs_path":           gcs_path,
+                "defendant_name_extracted": name.strip(),
+                "defendant_role_extracted": role,
+                "extraction_confidence":  0.85,
+                "raw_text_snippet":       full_text[:500],
+                "_ingested_at":           now,
+                "_extracted_at":          now,
+                "_source_pdf":            gcs_path,
+                "_source":                "pdf_orm_extractor_v1",
+            }
+
+
+def run(source_bucket, source_prefix, dest_project, dest_dataset,
+        dest_table, pipeline_args=None):
+    from google.cloud import storage
+    gcs      = storage.Client()
+    blobs    = gcs.list_blobs(source_bucket, prefix=source_prefix)
+    pdf_list = [f"gs://{source_bucket}/{b.name}" for b in blobs
+                if b.name.endswith(".pdf")]
+
+    with beam.Pipeline(options=PipelineOptions(pipeline_args or [])) as p:
+        (
+            p
+            | "CreatePaths"        &gt;&gt; beam.Create(pdf_list)
+            | "ExtractDefendants"  &gt;&gt; beam.ParDo(ExtractDefendantsFromPDF())
+            | "WriteToBronze"      &gt;&gt; beam.io.WriteToBigQuery(
+                f"{dest_project}:{dest_dataset}.{dest_table}",
+                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
+            )
+        )</programlisting>
+</para>
+</formalpara>
+</section>
+<section xml:id="_step_5_bronze_layer_state">
+<title>Step 5 — Bronze Layer State</title>
+<simpara>After DAGs 1, 2, and 3 have completed in a given pipeline window, the Bronze layer
+holds three independently sourced, append-only tables:</simpara>
+<informaltable frame="all" rowsep="1" colsep="1">
+<tgroup cols="3">
+<colspec colname="col_1" colwidth="28.5714*"/>
+<colspec colname="col_2" colwidth="42.8571*"/>
+<colspec colname="col_3" colwidth="28.5715*"/>
+<thead>
+<row>
+<entry align="left" valign="top">Table</entry>
+<entry align="left" valign="top">Content</entry>
+<entry align="left" valign="top">Written By</entry>
+</row>
+</thead>
+<tbody>
+<row>
+<entry align="left" valign="top"><simpara><literal>bronze_acquisitions.cases_raw</literal></simpara></entry>
+<entry align="left" valign="top"><simpara>One row per newly discovered court case. All fields are raw strings exactly as
+ returned by the court records API.</simpara></entry>
+<entry align="left" valign="top"><simpara>DAG 1 (Python → <literal>bq.insert_rows_json</literal>)</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><literal>bronze_acquisitions.properties_raw</literal></simpara></entry>
+<entry align="left" valign="top"><simpara>One row per property linked to a case. All values are raw strings (e.g.,
+ <literal>assessed_value_raw = "$245,000"</literal>). No type casting or address parsing.</simpara></entry>
+<entry align="left" valign="top"><simpara>DAG 2 (Pub/Sub pull → <literal>bq.insert_rows_json</literal>)</simpara></entry>
+</row>
+<row>
+<entry align="left" valign="top"><simpara><literal>bronze_acquisitions.defendants_raw</literal></simpara></entry>
+<entry align="left" valign="top"><simpara>One row per extracted defendant per PDF. Contains the GCS path of the source PDF,
+ the extracted name, role, confidence score, and a 500-character text snippet for
+ debugging. Includes low-confidence placeholder rows where extraction found no match.</simpara></entry>
+<entry align="left" valign="top"><simpara>DAG 3 (Dataflow ORM → <literal>beam.io.WriteToBigQuery</literal>)</simpara></entry>
+</row>
+</tbody>
+</tgroup>
+</informaltable>
+</section>
+<section xml:id="_step_6_dag_4_trigger_dataform_execution">
+<title>Step 6 — DAG 4: Trigger Dataform Execution</title>
+<simpara>DAG 4 runs at 05:00 UTC daily — after the Bronze ingestion window closes. Before
+initiating the Dataform run, it verifies that all three Bronze tables have received
+rows ingested today. This guard prevents Dataform from building Silver and Gold from
+incomplete Bronze data (e.g., if the PDF scraper was delayed or failed).</simpara>
+<formalpara>
+<title><literal>dags/dag_trigger_dataform.py</literal></title>
+<para>
+<programlisting language="python" linenumbering="unnumbered">from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.providers.google.cloud.operators.dataform import (
+    DataformCreateCompilationResultOperator,
+    DataformCreateWorkflowInvocationOperator,
+)
+from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
+from airflow.models import Variable
+import logging
+
+PROJECT_ID    = Variable.get("gcp_project_id")
+REGION        = Variable.get("gcp_region")
+DATAFORM_REPO = Variable.get("dataform_repository_id")
+
+
+def verify_bronze_has_today_data(**context):
+    """
+    Guard: confirm all three Bronze tables have rows ingested today.
+    Aborts the DAG if any table is empty, preventing a partial Dataform run.
+    """
+    bq       = BigQueryHook(use_legacy_sql=False)
+    run_date = context["ds"]
+
+    checks = {
+        "cases_raw": (
+            f"SELECT COUNT(*) FROM `{PROJECT_ID}.bronze_acquisitions.cases_raw` "
+            f"WHERE DATE(_ingested_at) = '{run_date}'"
+        ),
+        "properties_raw": (
+            f"SELECT COUNT(*) FROM `{PROJECT_ID}.bronze_acquisitions.properties_raw` "
+            f"WHERE DATE(_ingested_at) = '{run_date}'"
+        ),
+        "defendants_raw": (
+            f"SELECT COUNT(*) FROM `{PROJECT_ID}.bronze_acquisitions.defendants_raw` "
+            f"WHERE DATE(_ingested_at) = '{run_date}'"
+        ),
+    }
+
+    for table, query in checks.items():
+        count = bq.get_first(sql=query)[0]
+        if count == 0:
+            raise ValueError(
+                f"Bronze table '{table}' has no rows for {run_date}. "
+                "Dataform run aborted. Investigate upstream DAGs."
+            )
+        logging.info("Bronze check passed: %s has %d rows for %s.", table, count, run_date)
+
+
+with DAG(
+    dag_id="dag_trigger_dataform",
+    schedule_interval="0 5 * * *",
+    start_date=datetime(2025, 1, 1),
+    catchup=False,
+    default_args={
+        "retries":     1,
+        "retry_delay": timedelta(minutes=10),
+    },
+    on_failure_callback=lambda ctx: alert_on_failure(ctx),
+    tags=["acquisitions", "dataform", "silver", "gold"],
+) as dag:
+
+    verify_bronze = PythonOperator(
+        task_id="verify_all_bronze_tables_populated",
+        python_callable=verify_bronze_has_today_data,
+    )
+
+    compile_dataform = DataformCreateCompilationResultOperator(
+        task_id="compile_dataform_workspace",
+        project_id=PROJECT_ID,
+        region=REGION,
+        repository_id=DATAFORM_REPO,
+        compilation_result={
+            "git_commitish": "main",
+            "workspace":     "production",
+        },
+    )
+
+    run_dataform = DataformCreateWorkflowInvocationOperator(
+        task_id="run_dataform_acquisitions",
+        project_id=PROJECT_ID,
+        region=REGION,
+        repository_id=DATAFORM_REPO,
+        workflow_invocation={
+            "compilation_result": (
+                "{{ task_instance.xcom_pull('compile_dataform_workspace') }}"
+            ),
+            "invocation_config": {
+                "included_tags": ["acquisitions"],
+                "fully_refresh_incremental_tables_enabled": False,
+            },
+        },
+    )
+
+    verify_bronze &gt;&gt; compile_dataform &gt;&gt; run_dataform</programlisting>
+</para>
+</formalpara>
+</section>
+<section xml:id="_step_7_dataform_silver_models_normalized_3nf">
+<title>Step 7 — Dataform: Silver Models (Normalized 3NF)</title>
+<simpara>Dataform manages the Bronze → Silver SQL transformation pipeline inside BigQuery.
+The Silver models clean, validate, cast types, deduplicate records, and tokenize
+PII to produce the normalized 3NF tables described in <xref linkend="data-modeling-strategy"/>.</simpara>
+<formalpara>
+<title><literal>dataform/definitions/silver/cases.sqlx</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">config {
+  type: "incremental",
+  schema: "silver_acquisitions",
+  name: "cases",
+  tags: ["acquisitions", "silver"],
+  description: "Deduplicated, type-cast court case records. PK: case_id.",
+}
+
+SELECT
+  case_id,
+  TRIM(case_name)                                    AS case_name,
+  UPPER(TRIM(court_district))                        AS court_district,
+  PARSE_DATE('%m/%d/%Y', filing_date)                AS filing_date,
+  CASE
+    WHEN UPPER(status) IN ('ACTIVE','OPEN','FILED')   THEN 'ACTIVE'
+    WHEN UPPER(status) IN ('SETTLED','CLOSED')        THEN 'SETTLED'
+    WHEN UPPER(status) IN ('DISMISSED','DROPPED')     THEN 'DISMISSED'
+    ELSE 'UNKNOWN'
+  END                                                AS status,
+  _ingested_at                                       AS _bronze_ingested_at,
+  CURRENT_TIMESTAMP()                                AS _created_at,
+  CURRENT_TIMESTAMP()                                AS _updated_at
+
+FROM ${ref("bronze_acquisitions", "cases_raw")}
+WHERE case_id IS NOT NULL
+  AND filing_date IS NOT NULL
+
+${ when(incremental(), `
+  AND DATE(_ingested_at) &gt; (
+    SELECT MAX(DATE(_bronze_ingested_at)) FROM ${self()}
+  )
+`) }
+
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY case_id ORDER BY _ingested_at DESC
+) = 1</programlisting>
+</para>
+</formalpara>
+<formalpara>
+<title><literal>dataform/definitions/silver/properties.sqlx</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">config {
+  type: "incremental",
+  schema: "silver_acquisitions",
+  name: "properties",
+  tags: ["acquisitions", "silver"],
+  description: "Cleaned, type-cast property records. FK: case_id → cases.",
+}
+
+SELECT
+  GENERATE_UUID()                                                      AS property_id,
+  case_id,
+  TRIM(parcel_id)                                                      AS parcel_id,
+  TRIM(address_raw)                                                    AS street_address,
+  REGEXP_EXTRACT(address_raw, r'^(.*?),\s*[A-Z]{2}\s+\d{5}')         AS city,
+  REGEXP_EXTRACT(address_raw, r',\s*([A-Z]{2})\s+\d{5}')             AS state,
+  REGEXP_EXTRACT(address_raw, r'(\d{5})(?:-\d{4})?$')                AS zip_code,
+  TRIM(owner_name_raw)                                                 AS owner_name,
+  SAFE_CAST(
+    REPLACE(REPLACE(assessed_value_raw, '$', ''), ',', '') AS NUMERIC
+  )                                                                    AS assessed_value,
+  SAFE_CAST(TRIM(tax_year_raw) AS INT64)                              AS tax_year,
+  SAFE_CAST(
+    REPLACE(REPLACE(delinquent_amount_raw, '$', ''), ',', '') AS NUMERIC
+  )                                                                    AS delinquent_amount,
+  latitude,
+  longitude,
+  CURRENT_TIMESTAMP()                                                  AS _created_at,
+  CURRENT_TIMESTAMP()                                                  AS _updated_at
+
+FROM ${ref("bronze_acquisitions", "properties_raw")}
+WHERE case_id IS NOT NULL
+
+${ when(incremental(), `
+  AND DATE(_ingested_at) &gt; (SELECT MAX(DATE(_created_at)) FROM ${self()})
+`) }
+
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY case_id, COALESCE(parcel_id, address_raw)
+  ORDER BY _ingested_at DESC
+) = 1</programlisting>
+</para>
+</formalpara>
+<formalpara>
+<title><literal>dataform/definitions/silver/defendants.sqlx</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">config {
+  type: "incremental",
+  schema: "silver_acquisitions",
+  name: "defendants",
+  tags: ["acquisitions", "silver"],
+  description: "Defendant records extracted from Bronze PDFs. PII tokenized. FK: case_id → cases.",
+}
+
+SELECT
+  GENERATE_UUID()                                                     AS defendant_id,
+  case_id,
+  -- SHA-256 token. Raw defendant name is retained in bronze_acquisitions.defendants_raw only.
+  TO_HEX(SHA256(LOWER(TRIM(defendant_name_extracted))))               AS defendant_name_token,
+  COALESCE(UPPER(TRIM(defendant_role_extracted)), 'UNKNOWN')          AS defendant_role,
+  extraction_confidence,
+  _source_pdf,
+  CURRENT_TIMESTAMP()                                                 AS _created_at,
+  CURRENT_TIMESTAMP()                                                 AS _updated_at
+
+FROM ${ref("bronze_acquisitions", "defendants_raw")}
+WHERE case_id IS NOT NULL
+  AND defendant_name_extracted IS NOT NULL
+  AND extraction_confidence &gt;= 0.5   -- exclude low-confidence extractions from Silver
+
+${ when(incremental(), `
+  AND DATE(_ingested_at) &gt; (SELECT MAX(DATE(_created_at)) FROM ${self()})
+`) }
+
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY case_id, TO_HEX(SHA256(LOWER(TRIM(defendant_name_extracted))))
+  ORDER BY extraction_confidence DESC
+) = 1</programlisting>
+</para>
+</formalpara>
+</section>
+<section xml:id="_step_8_dataform_gold_models_star_schema_obt">
+<title>Step 8 — Dataform: Gold Models (Star Schema + OBT)</title>
+<simpara>The Gold models read from the Silver 3NF tables and produce two types of output:
+a Star Schema for analytics and a pre-joined One Big Table for the CRM export.</simpara>
+<formalpara>
+<title><literal>dataform/definitions/gold/dim_cases.sqlx</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">config {
+  type: "table",
+  schema: "gold_acquisitions",
+  name: "dim_cases",
+  tags: ["acquisitions", "gold", "star-schema"],
+}
+
+SELECT
+  case_id,
+  case_name,
+  court_district,
+  filing_date,
+  status,
+  CASE status
+    WHEN 'ACTIVE'    THEN 'Active — Under Review'
+    WHEN 'SETTLED'   THEN 'Settled'
+    WHEN 'DISMISSED' THEN 'Dismissed — No Action Required'
+    ELSE 'Status Unknown'
+  END AS status_label
+FROM ${ref("silver_acquisitions", "cases")}</programlisting>
+</para>
+</formalpara>
+<formalpara>
+<title><literal>dataform/definitions/gold/dim_properties.sqlx</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">config {
+  type: "table",
+  schema: "gold_acquisitions",
+  name: "dim_properties",
+  tags: ["acquisitions", "gold", "star-schema"],
+}
+
+SELECT
+  property_id,
+  parcel_id,
+  CONCAT(
+    COALESCE(street_address,''), ', ',
+    COALESCE(city,''), ', ',
+    COALESCE(state,''), ' ',
+    COALESCE(zip_code,'')
+  )                AS full_address,
+  city,
+  state,
+  zip_code,
+  assessed_value,
+  latitude,
+  longitude
+FROM ${ref("silver_acquisitions", "properties")}</programlisting>
+</para>
+</formalpara>
+<formalpara>
+<title><literal>dataform/definitions/gold/fact_distressed_acquisitions.sqlx</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">config {
+  type: "incremental",
+  schema: "gold_acquisitions",
+  name: "fact_distressed_acquisitions",
+  tags: ["acquisitions", "gold", "star-schema"],
+  description: "Fact table for distressed acquisition analysis. Grain: case × property × defendant.",
+}
+
+SELECT
+  GENERATE_UUID()                                                AS fact_id,
+  c.case_id,
+  p.property_id,
+  d.defendant_id,
+  p.delinquent_amount,
+  p.assessed_value,
+  p.tax_year,
+  DATE_DIFF(CURRENT_DATE(), c.filing_date, DAY)                 AS days_since_filing,
+  -- Acquisition score: composite heuristic (0–100)
+  -- Higher delinquency ratio + longer time filed = higher score
+  ROUND(LEAST(100,
+    (p.delinquent_amount / NULLIF(p.assessed_value, 0)) * 50
+    + LEAST(50, DATE_DIFF(CURRENT_DATE(), c.filing_date, DAY) / 10)
+  ), 2)                                                         AS acquisition_score,
+  CURRENT_DATE()                                                AS reporting_date,
+  CURRENT_TIMESTAMP()                                           AS _refreshed_at
+
+FROM ${ref("silver_acquisitions", "cases")} c
+JOIN ${ref("silver_acquisitions", "properties")}  p ON p.case_id = c.case_id
+JOIN ${ref("silver_acquisitions", "defendants")}  d ON d.case_id = c.case_id
+WHERE c.status = 'ACTIVE'
+
+${ when(incremental(), `
+  AND c._updated_at &gt; (SELECT MAX(_refreshed_at) FROM ${self()})
+`) }</programlisting>
+</para>
+</formalpara>
+<formalpara>
+<title><literal>dataform/definitions/gold/crm_distressed_export.sqlx</literal></title>
+<para>
+<programlisting language="sql" linenumbering="unnumbered">config {
+  type: "incremental",
+  schema: "gold_acquisitions",
+  name: "crm_distressed_export",
+  tags: ["acquisitions", "gold", "crm", "obt"],
+  description: "Pre-joined One Big Table for CRM integration. One flat row per case/property/defendant.",
+}
+
+SELECT
+  -- Case
+  c.case_id,
+  c.case_name,
+  c.court_district,
+  c.filing_date,
+  c.status                                                        AS case_status,
+  DATE_DIFF(CURRENT_DATE(), c.filing_date, DAY)                  AS days_since_filing,
+  -- Property
+  p.parcel_id,
+  CONCAT(
+    COALESCE(p.street_address,''), ', ',
+    COALESCE(p.city,''), ', ',
+    COALESCE(p.state,''), ' ',
+    COALESCE(p.zip_code,'')
+  )                                                               AS property_address,
+  p.city                                                         AS property_city,
+  p.state                                                        AS property_state,
+  p.zip_code                                                     AS property_zip,
+  p.assessed_value,
+  p.delinquent_amount,
+  p.tax_year,
+  p.latitude,
+  p.longitude,
+  -- Defendant (PII tokenized — raw name stays in Bronze only)
+  d.defendant_name_token,
+  d.defendant_role,
+  -- Scoring
+  ROUND(LEAST(100,
+    (p.delinquent_amount / NULLIF(p.assessed_value, 0)) * 50
+    + LEAST(50, DATE_DIFF(CURRENT_DATE(), c.filing_date, DAY) / 10)
+  ), 2)                                                          AS acquisition_score,
+  -- CRM sync control
+  CURRENT_TIMESTAMP()                                            AS export_prepared_at,
+  'NEW'                                                          AS crm_sync_status
+
+FROM ${ref("silver_acquisitions", "cases")} c
+JOIN ${ref("silver_acquisitions", "properties")}  p ON p.case_id = c.case_id
+JOIN ${ref("silver_acquisitions", "defendants")}  d ON d.case_id = c.case_id
+WHERE c.status = 'ACTIVE'
+
+${ when(incremental(), `
+  AND c._updated_at &gt; (SELECT MAX(export_prepared_at) FROM ${self()})
+`) }</programlisting>
+</para>
+</formalpara>
+</section>
+<section xml:id="_step_9_crm_export">
+<title>Step 9 — CRM Export</title>
+<simpara>The last step exports <literal>gold_acquisitions.crm_distressed_export</literal> to the CRM system.
+This is implemented as a Cloud Run service (or a fifth lightweight Composer DAG) that:</simpara>
+<orderedlist numeration="arabic">
+<listitem>
+<simpara>Queries rows where <literal>crm_sync_status = 'NEW'</literal>.</simpara>
+</listitem>
+<listitem>
+<simpara>POSTs each row as a prospect record to the CRM REST API.</simpara>
+</listitem>
+<listitem>
+<simpara>Updates <literal>crm_sync_status</literal> to <literal>'SYNCED'</literal> on success, or <literal>'FAILED'</literal> on API error,
+using a BigQuery DML <literal>UPDATE</literal> statement.</simpara>
+</listitem>
+</orderedlist>
+<note>
+<simpara>The CRM export is intentionally decoupled from the Dataform pipeline. Dataform&#8217;s
+responsibility ends at populating the Gold table. The CRM sync is an operational
+consumer of the Gold OBT — it does not belong inside the transformation pipeline.
+This separation means a CRM API outage never blocks Dataform from running.</simpara>
+</note>
+</section>
+</section>
+</chapter>
+<chapter xml:id="security-compliance">
+<title>Security &amp; Compliance</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>Security is not an afterthought — it is embedded into every layer of the data lake.
+This chapter describes the controls in place to protect sensitive data,
+prevent unauthorized access, and meet regulatory requirements.</simpara>
+</sidebar>
+<important>
+<simpara>This chapter contains classified information about the security design and controls of the data lake platform. Can&#8217;t be
+shared outside of authorized personnel.</simpara>
+</important>
+</chapter>
+<chapter xml:id="recommendations">
+<title>Recommendations</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>This chapter captures the most important lessons learned during the project
+and translates them into clear, actionable guidance for teams operating or
+extending the data lake. Both business and technical stakeholders will find
+relevant takeaways here.</simpara>
+</sidebar>
+<section xml:id="_architecture_recommendations">
+<title>Architecture Recommendations</title>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 01 — Enforce the Medallion Architecture boundary</title>
+<simpara>Never allow a consumer to read directly from Bronze. Bronze is an internal implementation
+detail, not a public interface. All cross-team sharing should happen through Silver
+or Gold datasets only. Enforce this with IAM and Dataplex zone access policies.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 02 — Design for replay from Day 1</title>
+<simpara>Every pipeline should be idempotent and able to reprocess any date range on demand.
+Use date-parameterized paths in GCS and <literal>WRITE_TRUNCATE</literal> for BigQuery loads.
+This is critical for recovering from bugs, schema errors, and source system issues.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 03 — Prefer serverless over always-on clusters</title>
+<simpara>Avoid maintaining persistent Dataflow clusters or large-scale virtual machines for
+batch workloads. Use Dataflow&#8217;s auto-scaling and BigQuery&#8217;s serverless model to align
+cost with actual workload. Idle infrastructure is wasted budget.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 04 — Separate dev, staging, and prod GCP projects</title>
+<simpara>Use separate GCP projects for each environment rather than using naming conventions
+within a single project. This provides stronger IAM and billing isolation,
+and prevents development jobs from inadvertently reading or writing production data.</simpara>
+</tip>
+</section>
+<section xml:id="_data_quality_recommendations">
+<title>Data Quality Recommendations</title>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 05 — Define quality rules before the pipeline, not after</title>
+<simpara>Work with data consumers to define acceptable quality thresholds <emphasis role="strong">before</emphasis> writing
+the pipeline. "Good enough" for a dashboard may be unacceptable for a financial report.
+Encoding expectations early prevents silent data corruption in production.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 06 — Quarantine, don&#8217;t discard</title>
+<simpara>When a record fails validation, route it to a quarantine table with the failure reason
+attached — never silently drop it. Discarded data without a trace is invisible debt
+that surfaces as business-reported "missing data" weeks later.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 07 — Monitor data freshness as a first-class SLA</title>
+<simpara>A pipeline that completes successfully but 4 hours late can be just as harmful as
+a failure. Define freshness SLAs for every Gold table and alert when they are breached.</simpara>
+</tip>
+</section>
+<section xml:id="_governance_recommendations">
+<title>Governance Recommendations</title>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 08 — Assign a data owner for every dataset</title>
+<simpara>Every dataset in the catalogue must have a named owner. Ownerless data becomes stale,
+untrustworthy, and ungoverned. The owner is accountable for data quality, access
+approvals, and documentation. Enforce this via Dataplex mandatory tag templates.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 09 — Conduct quarterly access reviews</title>
+<simpara>Service account and user permissions drift over time. Implement a quarterly review
+process where each team confirms the access still appropriate for each identity.
+Remove any roles that can no longer be justified.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 10 — Document data definitions in the catalogue, not in Slack</title>
+<simpara>Every important column — especially business metrics like "revenue", "active user",
+"churn rate" — should have a precise definition in Data Catalog, not buried in a
+Slack message or an engineer&#8217;s head. A single source of truth for definitions
+prevents conflicting numbers in executive reports.</simpara>
+</tip>
+</section>
+<section xml:id="_cost_management_recommendations">
+<title>Cost Management Recommendations</title>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 11 — Enable BigQuery cost controls immediately</title>
+<simpara>Set per-user and per-project query cost quotas in BigQuery before giving analysts
+self-service access. Without limits, a single expensive query can consume the
+monthly budget. Use custom quotas and BigQuery Reservations for predictable workloads.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 12 — Always partition and cluster Gold tables</title>
+<simpara>Unpartitioned BigQuery tables scan all data on every query. For Gold tables with
+millions or billions of rows, partitioning on date and clustering on common filter
+columns reduces query costs by 80–95% for typical dashboard queries.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 13 — Use GCS lifecycle rules from the start</title>
+<simpara>Configure Cold/Archive storage transitions and retention expiration rules for Bronze
+buckets from Day 1. It is easy to set up early and very costly to ignore.
+Storage costs compound silently as data volumes grow.</simpara>
+</tip>
+</section>
+<section xml:id="_operational_recommendations">
+<title>Operational Recommendations</title>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 14 — Treat pipeline failures as production incidents</title>
+<simpara>Every pipeline failure that affects a Gold table with active consumers should be
+treated as a production incident — with an SLA for resolution and a post-mortem.
+This cultural shift is as important as the technical architecture.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 15 — Maintain runbooks for all critical failure scenarios</title>
+<simpara>The data lake will fail in unexpected ways. Having written runbooks for the top 10
+failure modes (pipeline crash, bad data flood, schema change, cost spike) dramatically
+reduces recovery time and removes the single-person dependency risk.</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 16 — Invest in developer experience for data consumers</title>
+<simpara>Self-service analytics only works if the Gold layer is genuinely easy to use.
+Invest time in clear table documentation, example queries, and analyst onboarding.
+A data lake no one can find their way around is not providing business value.</simpara>
+</tip>
+</section>
+<section xml:id="_strategic_recommendations">
+<title>Strategic Recommendations</title>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 17 — Plan the ML/AI foundation in Phase 2</title>
+<simpara>The data lake is the prerequisite for machine learning. With Bronze and Silver in
+place, Phase 2 should focus on an ML feature store, model training pipelines using
+Vertex AI, and the first predictive use case (e.g., churn prediction, demand forecasting).</simpara>
+</tip>
+<tip>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/lightbulb.png"/>
+</imageobject>
+<textobject><phrase>lightbulb</phrase></textobject>
+</inlinemediaobject> Rec 18 — Expand the data catalogue to non-engineers</title>
+<simpara>The greatest long-term value of the data lake comes from empowering business analysts
+and product managers to discover and use data independently. Invest in Looker or
+Looker Studio as a self-service interface backed by well-curated Gold datasets.</simpara>
+</tip>
+</section>
+</chapter>
+<chapter xml:id="cost-analysis">
+<title>Cost Analysis</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>This chapter provides a transparent view of the platform&#8217;s cloud costs,
+how costs are structured, and how they compare to the previous state.
+The data lake&#8217;s cost model is <emphasis role="strong">consumption-based</emphasis> — you pay for what you use,
+and costs scale with business growth rather than being fixed overhead.</simpara>
+</sidebar>
+<important>
+<simpara>This chapter contains classified information about the cost structure and financial analysis of the data lake platform.
+Can&#8217;t be shared outside of authorized personnel.</simpara>
+</important>
+</chapter>
+<chapter xml:id="roadmap">
+<title>Roadmap &amp; Next Steps</title>
+<sidebar>
+<title><inlinemediaobject>
+<imageobject>
+<imagedata fileref="diagrams/icons/briefcase.png"/>
+</imageobject>
+<textobject><phrase>briefcase</phrase></textobject>
+</inlinemediaobject> Business Overview</title>
+<simpara>The current data lake is Phase 1 of a multi-phase data strategy. This chapter
+outlines what comes next — from expanding data coverage to enabling AI and
+machine learning capabilities that can directly drive business outcomes.</simpara>
+</sidebar>
+<important>
+<simpara>This chapter contains classified information about the future roadmap and strategic plans for the data lake platform.
+Can&#8217;t be shared outside of authorized personnel.</simpara>
+</important>
+</chapter>
+<glossary xml:id="glossary">
+<title>Glossary</title>
+<simpara>This glossary defines key terms used throughout this document.
+Non-technical readers are encouraged to refer here when encountering unfamiliar terms.</simpara>
+<variablelist>
+<varlistentry>
+<term>Apache Beam</term>
+<listitem>
+<simpara>An open-source unified programming model for batch and streaming data pipelines.
+Pipelines written in Beam can run on multiple execution engines; we use Google Cloud Dataflow as our runner.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Apache Airflow</term>
+<listitem>
+<simpara>An open-source workflow orchestration platform. We use the managed version on GCP called Cloud Composer.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>BigQuery</term>
+<listitem>
+<simpara>Google Cloud&#8217;s fully managed, serverless analytical data warehouse.
+Enables fast SQL queries over petabytes of data with no infrastructure to manage.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Bronze Layer</term>
+<listitem>
+<simpara>The first layer of the Medallion Architecture. Contains raw, unmodified data exactly as received
+from source systems. Acts as an immutable archive.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Cloud Composer</term>
+<listitem>
+<simpara>Google Cloud&#8217;s managed Apache Airflow service. Used to schedule and monitor all batch data pipelines.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Cloud Dataflow</term>
+<listitem>
+<simpara>Google Cloud&#8217;s fully managed service for executing Apache Beam pipelines at scale,
+with automatic scaling and no cluster management required.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Cloud KMS (Key Management Service)</term>
+<listitem>
+<simpara>Google Cloud service for creating and managing cryptographic keys used to encrypt data at rest.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Cloud Pub/Sub</term>
+<listitem>
+<simpara>Google Cloud&#8217;s managed publish-subscribe messaging service. Used to ingest real-time event streams.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Cloud Storage (GCS)</term>
+<listitem>
+<simpara>Google Cloud Storage — scalable, durable object storage.
+Serves as the primary storage layer for Bronze and Silver data.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>CMEK (Customer-Managed Encryption Key)</term>
+<listitem>
+<simpara>An encryption key that is created and controlled by the customer (us), stored in Cloud KMS,
+and used to encrypt data in GCS buckets and BigQuery datasets.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>DAG (Directed Acyclic Graph)</term>
+<listitem>
+<simpara>In the context of Airflow/Composer, a DAG is a pipeline definition — a collection of tasks
+and their dependencies, represented as a directed graph with no loops.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Data Domain</term>
+<listitem>
+<simpara>A logical grouping of data by business area (e.g., Sales, Finance, Marketing).
+Each domain owns its Silver datasets and is responsible for their quality and governance.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Data Lake</term>
+<listitem>
+<simpara>A centralized repository that stores structured, semi-structured, and unstructured data
+at any scale. Unlike a data warehouse, a data lake accepts raw data without requiring
+a predefined schema.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Data Lineage</term>
+<listitem>
+<simpara>The ability to trace data from its origin (source system) through every transformation
+step to its final destination. Used for debugging, compliance, and trust-building.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Data Quality (DQ)</term>
+<listitem>
+<simpara>A set of automated checks that validate data against defined rules
+(e.g., not null, uniqueness, value ranges) to ensure it is fit for use.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Dataplex</term>
+<listitem>
+<simpara>A GCP intelligent data fabric service for unified data governance, quality, cataloguing,
+and lineage tracking across GCS and BigQuery.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>ETL (Extract, Transform, Load)</term>
+<listitem>
+<simpara>A data integration pattern where data is extracted from a source, transformed (cleaned, restructured),
+and loaded into a destination system.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>ELT (Extract, Load, Transform)</term>
+<listitem>
+<simpara>A variant of ETL where raw data is first loaded into the destination (e.g., BigQuery or GCS),
+and transformations are applied afterwards using the destination&#8217;s compute.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Gold Layer</term>
+<listitem>
+<simpara>The third layer in the Medallion Architecture. Contains purpose-built, aggregated,
+business-ready datasets optimized for specific use cases — dashboards, reports, ML training sets.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>IAM (Identity and Access Management)</term>
+<listitem>
+<simpara>The GCP framework for controlling who (identity) can do what (role/permissions)
+on which resource. Enforces the principle of least privilege.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Idempotent</term>
+<listitem>
+<simpara>A property of a pipeline or operation: running it multiple times produces the same result as running it once.
+Critical for safe pipeline reruns and recovery.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Looker / Looker Studio</term>
+<listitem>
+<simpara>Business intelligence and data visualization tools from Google.
+Looker is the enterprise version; Looker Studio (formerly Data Studio) is the free, self-service version.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Medallion Architecture</term>
+<listitem>
+<simpara>A design pattern for organizing a data lake into three tiers: Bronze (raw), Silver (cleansed), and Gold (curated).
+Each layer has progressively higher data quality and business value.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Parquet</term>
+<listitem>
+<simpara>An efficient, columnar binary file format widely used for analytical data storage.
+Highly compressed and optimized for the kind of column-selective queries run in analytics.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>PII (Personally Identifiable Information)</term>
+<listitem>
+<simpara>Any data that can be used to identify a specific individual — e.g., name, email address,
+phone number, date of birth, or national ID number.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Schema</term>
+<listitem>
+<simpara>The formal definition of a data structure — its columns, data types, and constraints.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Serverless</term>
+<listitem>
+<simpara>A cloud computing model where the cloud provider manages the servers and infrastructure.
+Users only pay for actual resource consumption (compute time, data scanned, messages delivered)
+with no idle costs and no capacity planning required.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Silver Layer</term>
+<listitem>
+<simpara>The second layer in the Medallion Architecture. Contains validated, deduplicated,
+standardized, and enriched data. Acts as the single source of truth for analytical consumers.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>SLA (Service Level Agreement)</term>
+<listitem>
+<simpara>A committed performance target. In the data lake context: a Gold table&#8217;s SLA might be
+"data must be refreshed and available by 08:00 UTC each morning".</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Streaming Ingestion</term>
+<listitem>
+<simpara>Continuously ingesting data as it is produced, in near-real-time, as opposed to batch ingestion
+(processing a block of data at a scheduled time).</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Terraform</term>
+<listitem>
+<simpara>An open-source infrastructure-as-code tool used to provision and manage cloud resources
+(GCS buckets, BigQuery datasets, IAM roles, etc.) through version-controlled configuration files.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>VPC Service Controls</term>
+<listitem>
+<simpara>A GCP security feature that creates a service perimeter around GCP resources,
+preventing data exfiltration by restricting which networks can access specific GCP APIs.</simpara>
+</listitem>
+</varlistentry>
+<varlistentry>
+<term>Vertex AI</term>
+<listitem>
+<simpara>Google Cloud&#8217;s managed machine learning platform, used for training, deploying,
+and monitoring ML models. Built on top of the data lake in Phase 3.</simpara>
+</listitem>
+</varlistentry>
+</variablelist>
+</glossary>
+</book>
