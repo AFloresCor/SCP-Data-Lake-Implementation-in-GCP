@@ -1,0 +1,100 @@
+[[executive-summary]]
+== Executive Summary
+
+[.lead]
+The *{project-name}* consolidates the organization's data assets into a
+single, governed, and scalable platform on Google Cloud Platform, enabling faster
+decision-making, cost-efficient analytics, and a foundation for more complex data projects, including machine learning.
+
+=== The Business Problem
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+Our data was scattered across dozens of isolated systems — departmental databases,
+third-party SaaS exports, and manual spreadsheets. Analysts spent up to *60% of
+their time* just locating and preparing data instead of generating insights.
+Leadership lacked a single, reliable source of truth for key business metrics.
+
+Aside from that, a new project was on the horizon that would require integrating data from hundreds of new sources. 
+The existing data landscape was not only inefficient but also a barrier to innovation.
+
+--
+
+Before this project, the organization faced three critical data challenges:
+
+. *Data Silos* — Each business unit maintained its own data store with no cross-team
+  visibility or shared governance.
+. *Slow Time-to-Insight* — Producing a consolidated report required days of manual
+  data extraction and reconciliation.
+. *Low innovation* — The fragmented data landscape made it difficult to implement data-driven projects, especially 
+  those involving machine learning.
+
+=== The Solution
+
+We designed and implemented a centralized *Data Lake* on Google Cloud Platform using
+a multi-layer architecture (Bronze → Silver → Gold) that ingests raw data from all
+source systems, transforms it for quality and consistency, and serves curated datasets
+to analysts, dashboards, and machine learning workflows. 
+
+New data sources can be onboarded in days instead of months, and business users have self-service access to trusted data.
+
+=== Key Outcomes
+
+[cols="1,3", options="header"]
+|===
+|Outcome |Result
+
+|Unified Data Platform
+|100% of priority data sources ingested and catalogued in a single environment.
+
+|Faster Insights
+|Report generation time reduced from days to minutes.
+
+|Data Quality
+|Automated quality checks catch and quarantine bad data before it reaches consumers.
+
+|Self-Service Analytics
+|Analysts and data scientists can explore curated data without waiting on engineering.
+
+|Governance & Compliance
+|Centralized access control, lineage tracking, and audit logs across all datasets.
+|===
+
+=== Strategic Value
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+This platform is not just a storage system — it is a *strategic data asset*
+that accelerates every team that depends on data. It is the basis on which *{company}* 
+can build complex data projects, ride the wave of AI, and maintain a competitive edge in the market.
+--
+
+The data lake delivers compounding value over time:
+
+* *Short-term* — Eliminate manual data wrangling and reduce reporting backlog.
+* *Medium-term* — Enable cross-domain and multi-source analytics that were previously impossible.
+* *Long-term* — Provide the data foundation for predictive analytics and AI-driven products.
+
+=== Summary of Investment
+
+[cols="1,2", options="header"]
+|===
+|Item |Details
+
+|Cloud Provider
+|Google Cloud Platform (GCP)
+
+|Core Services
+|Cloud Storage, BigQuery, Dataflow, Dataform, Composer, Pub/Sub, Cloud Run, Dataplex, IAM
+
+|Team
+|2 Data Engineers, 1 Cloud Architect, 1 Data Analyst
+
+|Timeline
+|6 months (planning through production go-live)
+
+|Estimated Annual Cloud Cost
+|_See <<cost-analysis>> for a detailed breakdown._
+|===

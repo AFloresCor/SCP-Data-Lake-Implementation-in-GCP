@@ -1,0 +1,90 @@
+@startuml orchestration-architecture
+skinparam dpi 150
+skinparam defaultFontName Helvetica
+skinparam componentStyle rectangle
+skinparam backgroundColor White
+skinparam ArrowColor #555555
+skinparam package {
+  BackgroundColor White
+  BorderColor #999999
+  FontStyle bold
+}
+
+title GCP — Orchestration Architecture
+
+top to bottom direction
+
+' ── TRIGGERS ──────────────────────────────────────────────
+package "Triggers" #FFEEDD {
+  [Cron Schedule\n(time-based)] as Cron
+  [Event Trigger\n(GCS / Pub/Sub / BQ notification)] as EventTrigger
+  Cron         -[hidden]-> EventTrigger
+}
+
+' ── COMPOSER (outer orchestrator) ────────────────────────
+package "Cloud Composer / Airflow\n(outer orchestrator)" #FFF8DC {
+  [Ingestion DAGs\n(ingest → Bronze)] as DAGIngest
+  [Extraction DAGs\n(GCS → BQ Bronze)] as DAGExtract
+  [Transformation DAG\n(Bronze → Silver → Gold)] as DAGTransform
+  DAGIngest    -[hidden]-> DAGExtract
+  DAGExtract   -[hidden]-> DAGTransform
+}
+
+' ── DATAFLOW JOBS ─────────────────────────────────────────
+package "Cloud Dataflow" #FFE4B5 {
+  [Ingestion Job\n(scraper / API ingest)] as DFIngest
+  [Extraction Job\n(ORM / LLM / NLP)] as DFExtract
+  DFIngest -[hidden]-> DFExtract
+}
+
+' ── DATAFORM (inner orchestrator) ────────────────────────
+package "Dataform / dbt\n(inner SQL orchestrator)" #E0FFFF {
+  [Bronze → Silver\n(SQL models + tests)] as DFMSilver
+  [Silver → Gold\n(SQL models + tests)] as DFMGold
+  DFMSilver -[hidden]-> DFMGold
+}
+
+' ── BRONZE LAYER ──────────────────────────────────────────
+package "Bronze Layer" #FFE4C4 {
+  [Cloud Storage\n(raw files)] as GCS
+  [BigQuery Bronze\n(raw structured tables)] as BQBronze
+  GCS -[hidden]-> BQBronze
+}
+
+' ── SILVER / GOLD LAYERS ──────────────────────────────────
+package "Silver Layer" #C6DCF5 {
+  [BigQuery Silver\n(cleansed & conformed)] as BQSilver
+}
+
+package "Gold Layer" #B8E0B8 {
+  [BigQuery Gold\n(aggregated & curated)] as BQGold
+}
+
+' ── FLOWS ─────────────────────────────────────────────────
+
+' Triggers → Composer
+Cron         --> DAGIngest    : scheduled run
+Cron         --> DAGExtract   : scheduled run
+Cron         --> DAGTransform : scheduled run
+EventTrigger --> DAGIngest    : event-driven run
+EventTrigger --> DAGExtract   : new file in GCS
+EventTrigger --> DAGTransform : new data in Bronze
+
+' Composer → Dataflow
+DAGIngest    --> DFIngest     : triggers ingest job
+DAGExtract   --> DFExtract    : triggers extraction job
+
+' Composer → Dataform (triggers ELT after Bronze is ready)
+DAGTransform --> DFMSilver    : triggers SQL pipeline
+
+' Dataflow → Bronze
+DFIngest     --> GCS          : writes raw files
+DFIngest     --> BQBronze     : writes structured rows
+DFExtract    --> BQBronze     : writes extracted rows
+
+' Dataform → Silver → Gold (chained SQL models)
+DFMSilver    --> BQSilver     : creates / refreshes Silver
+DFMSilver    --> DFMGold      : triggers Gold models on success
+DFMGold      --> BQGold       : creates / refreshes Gold
+
+@enduml

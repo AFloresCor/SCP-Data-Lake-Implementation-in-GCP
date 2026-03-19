@@ -1,0 +1,75 @@
+@startuml transformation-architecture
+skinparam dpi 150
+skinparam defaultFontName Helvetica
+skinparam componentStyle rectangle
+skinparam backgroundColor White
+skinparam ArrowColor #555555
+skinparam package {
+  BackgroundColor White
+  BorderColor #999999
+  FontStyle bold
+}
+
+title GCP — Transformation Architecture
+
+top to bottom direction
+
+' ── BRONZE LAYER ──────────────────────────────────────────
+package "Bronze Layer  ·  Raw / Landing" #FFE4B5 {
+  [Cloud Storage\n(raw files: PDF, HTML, DOC)] as GCS
+  [BigQuery\n(raw structured tables)] as BQBronze
+  GCS -[hidden]-> BQBronze
+}
+
+' ── ETL PIPELINE (outside BQ) ────────────────────────────
+package "ETL Pipeline  ·  Unstructured Extraction" #FFF8DC {
+  [Cloud Dataflow\n(ORM / LLM / NLP extraction)] as Dataflow
+}
+
+package "Orchestration — ETL" #F0FFF0 {
+  [Cloud Composer / Airflow\n(schedules & monitors Dataflow)] as Composer
+}
+
+' ── ELT PIPELINE (inside BQ) ─────────────────────────────
+package "ELT Pipeline  ·  SQL Transformations" #E0FFFF {
+  [BigQuery\n(ELT SQL — Bronze → Silver)] as BQTransformSilver
+  [BigQuery\n(ELT SQL — Silver → Gold)] as BQTransformGold
+  BQTransformSilver -[hidden]-> BQTransformGold
+}
+
+package "Orchestration — ELT" #F0FFF0 {
+  [Dataform / dbt\n(SQL transforms + tests)] as Dataform
+}
+
+' ── SILVER LAYER ──────────────────────────────────────────
+package "Silver Layer  ·  Cleansed / Conformed" #C6DCF5 {
+  [BigQuery\n(validated & standardised tables)] as BQSilver
+}
+
+' ── GOLD LAYER ────────────────────────────────────────────
+package "Gold Layer  ·  Curated / Serving" #B8E0B8 {
+  [BigQuery\n(aggregated domain datasets)] as BQGold
+}
+
+' ── FLOWS ─────────────────────────────────────────────────
+
+' ETL: unstructured GCS → Dataflow extracts → BQ Bronze
+GCS        --> Dataflow          : reads raw files (PDF, HTML, DOC)
+Dataflow   --> BQBronze          : writes extracted structured data
+
+' Composer orchestrates Dataflow (outer pipeline)
+Composer   ..> Dataflow          : triggers & monitors
+
+' ELT: Bronze → Silver (SQL inside BQ)
+BQBronze   --> BQTransformSilver : source tables
+BQTransformSilver --> BQSilver   : writes cleansed rows
+
+' ELT: Silver → Gold (SQL inside BQ)
+BQSilver   --> BQTransformGold   : source tables
+BQTransformGold --> BQGold       : writes curated rows
+
+' Dataform orchestrates SQL transforms (inner pipeline)
+Dataform   ..> BQTransformSilver : manages SQL jobs
+Dataform   ..> BQTransformGold   : manages SQL jobs
+
+@enduml

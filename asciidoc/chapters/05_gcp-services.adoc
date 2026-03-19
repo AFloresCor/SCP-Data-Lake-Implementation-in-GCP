@@ -1,0 +1,14 @@
+[[gcp-services]]
+== GCP Services Deep Dive
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+This chapter explains each Google Cloud service used in the platform,
+why it was chosen over alternatives, and how it contributes to the
+overall solution. Non-technical readers can focus on the "business value"
+callouts in each section.
+--
+
+IMPORTANT: This chapter is ommited for the sake of brevity and to not repeat information that is already widely 
+available in Google Cloud documentation.

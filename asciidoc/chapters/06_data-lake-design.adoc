@@ -1,0 +1,486 @@
+[[data-lake-design]]
+== Data Lake Design
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+This chapter describes how data is organized, modeled, and governed inside the
+data lake. Good design here is what turns a "pile of files in the cloud" into
+a *trusted, reusable data asset* that teams across the organization can rely on.
+The central question of this chapter is: *how should data be modeled at each layer?*
+Should Bronze be normalized? Should Silver use Kimball? Should Gold use One Big Table?
+Each decision has long-term consequences for performance, integrity, and development
+velocity — and every recommendation here is grounded in the specific objectives of
+this project.
+--
+
+=== Naming Conventions
+
+Consistent naming reduces ambiguity, makes automation easier, and helps analysts
+navigate the catalogue. The following convention applies across all layers.
+
+==== GCS Bucket Names
+
+[source]
+----
+{project-id}-{layer}-{environment}
+
+Examples:
+  mycompany-bronze-prod
+  mycompany-silver-prod
+  mycompany-gold-prod
+  mycompany-bronze-dev
+----
+
+==== GCS Object Paths
+
+[source]
+----
+{bucket}/{source_system}/{entity}/{year=YYYY}/{month=MM}/{day=DD}/{file}
+
+Examples:
+  mycompany-bronze-prod/court-records/cases/year=2025/month=11/day=15/part-00001.parquet
+  mycompany-bronze-prod/acquisitions/defendants-pdfs/year=2025/month=11/day=15/case-2025-TX-0042.pdf
+  mycompany-silver-prod/acquisitions/properties/year=2025/month=11/properties_cleansed.parquet
+----
+
+==== BigQuery Datasets and Tables
+
+[source]
+----
+Dataset:  {layer}_{domain}
+Table:    {entity}
+
+Examples:
+  bronze_acquisitions.cases_raw
+  bronze_acquisitions.properties_raw
+  bronze_acquisitions.defendants_raw
+  silver_acquisitions.cases
+  silver_acquisitions.properties
+  silver_acquisitions.defendants
+  gold_acquisitions.fact_distressed_acquisitions
+  gold_acquisitions.dim_cases
+  gold_acquisitions.dim_properties
+  gold_acquisitions.dim_defendants
+  gold_acquisitions.crm_distressed_export
+----
+
+=== Data Partitioning Strategy
+
+[cols="1,2,2", options="header"]
+|===
+|Layer |GCS Partitioning |BigQuery Partitioning
+
+|Bronze
+|`year/month/day` (append only)
+|Partitioned by `_ingested_at` (ingestion timestamp). External tables used for
+ GCS-resident unstructured files.
+
+|Silver
+|`year/month` (reprocessed when source changes)
+|DATE or TIMESTAMP partition on the business event date
+ (`filing_date`, `_created_at`). Clustering on high-cardinality filter columns.
+
+|Gold
+|`year/month` (overwritten on each Dataform run)
+|DATE partition + clustering on the most common filter columns
+ (e.g., `case_status`, `court_district`, `crm_sync_status`).
+|===
+
+[[data-modeling-strategy]]
+=== Data Modeling Strategy
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+Data modeling is the discipline of deciding *how data is structured and related*
+within each layer. A poor modeling decision in Silver can force every downstream
+consumer to work around the same structural issues forever. The correct model at
+each layer depends on the primary consumer, the change frequency of the data, and
+the relationships between entities in the business domain.
+--
+
+The three Bronze → Silver → Gold layers serve fundamentally different purposes, and
+each warrants a different modeling approach. The table below summarizes the decision
+for this project before the detailed rationale for each choice is given.
+
+[cols="1,2,2,2", options="header"]
+|===
+|Layer |Model Chosen |Models Considered |Reason Others Were Rejected
+
+|*Bronze*
+|Schema-on-Read (raw preservation)
+|Normalized relational, flat/wide
+|Normalization in Bronze is premature. Source schemas change; raw fidelity must be
+ preserved for full pipeline replay.
+
+|*Silver*
+|Normalized Relational (3NF)
+|Kimball Star at Silver; One Big Table at Silver
+|Silver is the integration layer, not the serving layer. 3NF ensures entity integrity
+ and eliminates redundancy across the multi-entity domain of this project.
+ Kimball at Silver conflates integration with serving and forces a single query
+ pattern on all consumers. OBT at Silver creates update anomalies for one-to-many entities.
+
+|*Gold — Analytics*
+|Kimball Star Schema
+|Snowflake Schema; OBT only
+|Star Schema balances query performance with dimensional flexibility for BI/Looker.
+ Snowflake adds join depth that slows interactive queries without meaningful benefit
+ for this domain's dimension cardinality. OBT-only loses the ability to filter on
+ well-defined dimension attributes.
+|===
+
+==== Bronze Layer: Schema-on-Read (Raw Preservation)
+
+Bronze is *not a modeling layer* — it is an archival layer. The objective is to land
+data exactly as it was received from the source, augmented only by system-added
+metadata columns (prefixed with `_`), and nothing else.
+
+[IMPORTANT]
+====
+Never apply business transformations in Bronze. No type casting to business types,
+no field renaming, no normalization, no derivation of new columns. The only permissible
+additions are ingestion metadata columns prefixed with `_` (e.g., `_ingested_at`,
+`_source`, `_pipeline_run_id`).
+====
+
+*Why no normalization in Bronze?*
+
+* *Source schemas change.* A court records API may return `case_no` today and
+  `case_number` tomorrow. Raw preservation means Bronze never needs reprocessing
+  for source-side renames.
+* *Replay requirements.* If a Bug is discovered in Silver six months later, Bronze
+  must be replayable from day one. Any transformation applied in Bronze becomes a
+  liability that may need to be undone before replay.
+* *Unstructured sources exist.* PDFs and HTML files have no relational schema.
+  Forcing a structure onto Bronze for unstructured content would require OCR before
+  landing, creating a fragile pre-processing dependency.
+
+.Bronze Table: `bronze_acquisitions.cases_raw`
+[source,sql]
+----
+CREATE TABLE bronze_acquisitions.cases_raw (
+  -- Raw source fields (preserved exactly as received from the court API)
+  case_name          STRING,          -- "2025-TX-HARRIS-0042"
+  case_id            STRING,          -- court-assigned numeric/alphanumeric ID
+  court_district     STRING,
+  filing_date        STRING,          -- raw: "11/15/2025" — NOT cast to DATE here
+  status             STRING,          -- raw: "ACTIVE", "pending", "open", etc.
+  raw_payload        JSON,            -- full raw JSON payload for unmodeled fields
+
+  -- Ingestion metadata (system-added, never from the source)
+  _ingested_at       TIMESTAMP  NOT NULL,
+  _source            STRING     NOT NULL,   -- e.g., "court_api_v1"
+  _pipeline_run_id   STRING     NOT NULL,
+  _pubsub_message_id STRING
+)
+PARTITION BY DATE(_ingested_at)
+OPTIONS (description = 'Raw court case records. Append-only. Do not query directly in reports.');
+----
+
+==== Silver Layer: Normalized Relational Model (3NF)
+
+Silver is the *single source of truth* layer. Its design goal is maximum data
+integrity and minimum redundancy. It is the foundation on which all Gold models,
+data scientists, and operational queries build.
+
+*Why normalized 3NF at Silver, and not Kimball or OBT?*
+
+The distressed acquisitions domain contains three clearly distinct, independently
+meaningful entities with one-to-many relationships:
+
+[source]
+----
+Case (1) ──── (N) Properties     (one case → many properties under dispute)
+Case (1) ──── (N) Defendants     (one case → many defendants)
+----
+
+Choosing OBT or Kimball at the Silver layer for this structure creates critical
+design problems:
+
+[cols="1,3,2", options="header"]
+|===
+|Model at Silver |What Happens |Why This Is Wrong
+
+|*One Big Table*
+|One row per (case × property × defendant) combination. A case with 2 properties
+ and 3 defendants generates 6 rows, with all case-level fields repeated 6 times.
+|Update anomalies: a case status change from `ACTIVE` to `SETTLED` requires updating
+ all 6 rows atomically. A missed update produces two conflicting statuses in the same table.
+
+|*Kimball Star at Silver*
+|A fact table with grain `case_id × property_id × defendant_id` and denormalized
+ dimension attributes embedded.
+|Silver is model-agnostic and should serve all consumers. Pre-committing to a Kimball
+ grain at Silver forces every consumer — including ML pipelines and operational APIs —
+ to accept that grain. It also conflates concern: Silver is for integration, Gold is for serving.
+
+|*Normalized 3NF*
+|Each entity lives in its own table, deduplicated and linked by foreign keys.
+ Silver rows for `cases` are updated in one place; `properties` and `defendants`
+ reference `case_id` as a foreign key.
+|This is the correct choice. Silver is a clean, authoritative, entity-oriented
+ representation of the business domain. Gold models then denormalize or aggregate
+ as needed for their specific consumers.
+|===
+
+.Silver Schema: `silver_acquisitions.cases`
+[source,sql]
+----
+CREATE TABLE silver_acquisitions.cases (
+  case_id           STRING     NOT NULL,   -- PK: deduplicated court case ID
+  case_name         STRING     NOT NULL,
+  court_district    STRING     NOT NULL,
+  filing_date       DATE       NOT NULL,   -- properly typed, validated
+  status            STRING     NOT NULL,   -- ACTIVE | SETTLED | DISMISSED
+  _bronze_source_id STRING,               -- back-reference to bronze row
+  _created_at       TIMESTAMP  NOT NULL,
+  _updated_at       TIMESTAMP  NOT NULL
+)
+PARTITION BY filing_date
+CLUSTER BY court_district, status;
+----
+
+.Silver Schema: `silver_acquisitions.properties`
+[source,sql]
+----
+CREATE TABLE silver_acquisitions.properties (
+  property_id       STRING     NOT NULL,   -- PK: generated surrogate key
+  case_id           STRING     NOT NULL,   -- FK → silver_acquisitions.cases
+  parcel_id         STRING,
+  street_address    STRING,
+  city              STRING,
+  state             STRING,
+  zip_code          STRING,
+  owner_name        STRING,
+  assessed_value    NUMERIC,              -- parsed from raw "$245,000" string
+  tax_year          INT64,
+  delinquent_amount NUMERIC,
+  latitude          FLOAT64,
+  longitude         FLOAT64,
+  _created_at       TIMESTAMP  NOT NULL,
+  _updated_at       TIMESTAMP  NOT NULL
+)
+PARTITION BY DATE(_created_at)
+CLUSTER BY state, zip_code;
+----
+
+.Silver Schema: `silver_acquisitions.defendants`
+[source,sql]
+----
+CREATE TABLE silver_acquisitions.defendants (
+  defendant_id          STRING  NOT NULL,  -- PK: generated surrogate key
+  case_id               STRING  NOT NULL,  -- FK → silver_acquisitions.cases
+  defendant_name_token  STRING,            -- TOKENIZED (SHA-256). Raw name in Bronze only.
+  defendant_role        STRING,            -- OWNER | RESPONDENT | GUARANTOR
+  extraction_confidence FLOAT64,           -- ORM confidence score (0.0–1.0)
+  _source_pdf           STRING,            -- GCS path of the originating PDF
+  _created_at           TIMESTAMP NOT NULL,
+  _updated_at           TIMESTAMP NOT NULL
+)
+PARTITION BY DATE(_created_at)
+CLUSTER BY case_id;
+----
+
+==== Gold Layer: Kimball Star Schema (Analytics)
+
+The Gold Analytics dataset provides fast, pre-joined data for BI dashboards,
+ad-hoc SQL, and cross-domain reporting. The Kimball Star Schema is the right model
+here because it is optimized for the analytical read pattern: filter on dimension
+attributes, aggregate fact measures.
+
+*Why Star Schema?*
+
+A *Snowflake Schema* further normalizes dimension tables — for example, splitting
+`dim_properties` into `dim_properties → dim_addresses → dim_zip_codes`. This is
+appropriate when:
+
+. Dimension tables are enormous (tens of millions of rows) and storage is a primary constraint.
+. Sub-dimensions have deep, independent hierarchies that change at different frequencies
+  (e.g., a product hierarchy with category → subcategory → brand).
+
+For this project, neither condition applies:
+
+* Dimension tables (cases, properties, defendants) are modest in row count.
+* No deep sub-dimension hierarchies exist in the acquisitions domain.
+* Each additional `JOIN` in a Snowflake query increases Looker rendering time and
+  BigQuery slot consumption for every query an analyst runs.
+
+*Star Schema delivers:* fewer joins, faster Looker queries, and column names that
+match the business vocabulary used in reports.
+
+.Gold Star Schema (Acquisitions Domain)
+[source]
+----
+            [dim_cases]
+                 |
+                 | case_id (FK)
+                 |
+[dim_properties] ─── [fact_distressed_acquisitions] ─── [dim_defendants]
+  property_id (FK)         fact_id (PK)                  defendant_id (FK)
+                           case_id
+                           property_id
+                           defendant_id
+                           delinquent_amount   ← measures
+                           assessed_value
+                           days_since_filing
+                           acquisition_score
+                           reporting_date
+----
+
+.Gold Table: `gold_acquisitions.fact_distressed_acquisitions`
+[source,sql]
+----
+CREATE TABLE gold_acquisitions.fact_distressed_acquisitions (
+  fact_id              STRING  NOT NULL,
+  -- Dimension keys
+  case_id              STRING  NOT NULL,   -- → dim_cases
+  property_id          STRING  NOT NULL,   -- → dim_properties
+  defendant_id         STRING  NOT NULL,   -- → dim_defendants
+  -- Measures
+  delinquent_amount    NUMERIC,
+  assessed_value       NUMERIC,
+  tax_year             INT64,
+  days_since_filing    INT64,              -- CURRENT_DATE - filing_date
+  acquisition_score    FLOAT64,            -- composite scoring model output (0–100)
+  -- Partitioning
+  reporting_date       DATE    NOT NULL,
+  _refreshed_at        TIMESTAMP NOT NULL
+)
+PARTITION BY reporting_date
+CLUSTER BY case_id;
+----
+
+.Gold Table: `gold_acquisitions.dim_cases`
+[source,sql]
+----
+CREATE TABLE gold_acquisitions.dim_cases (
+  case_id        STRING  NOT NULL,
+  case_name      STRING,
+  court_district STRING,
+  filing_date    DATE,
+  status         STRING,
+  status_label   STRING   -- "Active — Under Review", "Settled", "Dismissed"
+);
+----
+
+.Gold Table: `gold_acquisitions.dim_properties`
+[source,sql]
+----
+CREATE TABLE gold_acquisitions.dim_properties (
+  property_id    STRING  NOT NULL,
+  parcel_id      STRING,
+  full_address   STRING,           -- denormalized from Silver for display
+  city           STRING,
+  state          STRING,
+  zip_code       STRING,
+  assessed_value NUMERIC,
+  latitude       FLOAT64,
+  longitude      FLOAT64
+);
+----
+
+.Gold Table: `gold_acquisitions.dim_defendants`
+[source,sql]
+----
+CREATE TABLE gold_acquisitions.dim_defendants (
+  defendant_id         STRING  NOT NULL,
+  defendant_name_token STRING,            -- TOKENIZED — PII
+  defendant_role       STRING,
+  case_id              STRING             -- denormalized for convenience
+);
+----
+
+=== Data Quality Framework
+
+All Silver and Gold tables are checked by automated Dataplex DQ tasks after each
+pipeline run. Failures quarantine the affected records in a `_quarantine` table and
+trigger an alert before the bad data reaches Gold.
+
+[cols="1,2,1", options="header"]
+|===
+|Check Type |Description |Layer
+
+|Not Null
+|Critical columns must never be null: `case_id`, `filing_date`, `property_id`,
+ `defendant_id`.
+|Silver, Gold
+
+|Uniqueness
+|Primary key columns must contain unique values per partition.
+|Silver, Gold
+
+|Referential Integrity
+|`case_id` in `properties` and `defendants` must match a valid `case_id` in `cases`.
+|Silver
+
+|Value Range
+|`delinquent_amount > 0`, `assessed_value > 0`,
+ `extraction_confidence BETWEEN 0 AND 1`.
+|Silver, Gold
+
+|Freshness
+|`max(_updated_at)` must be within the expected refresh window after each DAG run.
+|Gold
+
+|Row Count Anomaly
+|Daily row count must not deviate more than 30% from the 7-day moving average.
+|All
+
+|PII Token Validation
+|`defendant_name_token` must never contain a raw name pattern. Checked via regex on
+ Silver and Gold. If a raw name is detected, the pipeline fails and alerts.
+|Silver, Gold
+|===
+
+=== Data Retention Policy
+
+[cols="2,1,2", options="header"]
+|===
+|Layer |Retention Period |Mechanism
+
+|Bronze (raw)
+|7 years
+|GCS Lifecycle rule — transition to COLDLINE after 12 months.
+ BigQuery Bronze tables retained for 7 years via table expiration.
+
+|Silver (cleansed)
+|3 years
+|BigQuery table expiration — older partitions dropped automatically.
+
+|Gold (aggregated)
+|5 years
+|BigQuery table expiration; older partitions dropped after 5 years.
+
+|Bad data / Quarantine
+|90 days
+|GCS Lifecycle delete; retained for investigation and selective replay.
+|===
+
+=== Data Domains
+
+Data is logically organized by business domain. Each domain owns its Silver datasets
+and contributes to shared Gold datasets:
+
+[cols="1,2,3", options="header"]
+|===
+|Domain |Owned By |Key Entities
+
+|*Acquisitions*
+|Data Engineering / Legal Operations
+|`cases`, `properties`, `defendants`, `fact_distressed_acquisitions`,
+ `crm_distressed_export`
+
+|*Sales / CRM*
+|Sales Operations
+|`customers`, `orders`, `opportunities`
+
+|*Finance*
+|Finance Team
+|`transactions`, `invoices`, `cost_centers`, `budgets`
+
+|*Marketing*
+|Marketing Team
+|`campaigns`, `leads`, `channel_performance`, `attribution`
+|===

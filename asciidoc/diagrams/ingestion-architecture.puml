@@ -1,0 +1,74 @@
+@startuml ingestion-architecture
+skinparam dpi 150
+skinparam defaultFontName Helvetica
+skinparam componentStyle rectangle
+skinparam backgroundColor White
+skinparam ArrowColor #555555
+skinparam package {
+  BackgroundColor White
+  BorderColor #999999
+  FontStyle bold
+}
+
+title GCP — Ingestion Architecture
+
+top to bottom direction
+
+package "Source Systems" #FFEEDD {
+  [CRM Platform\n(API / CSV)] as CRM
+  [Finance System\n(API / CSV)] as Finance
+  [Marketing Analytics\n(CSV exports)] as Marketing
+  [Web Scraping\n(JSON / HTML)] as WebScrape
+  [Third-Party Feeds\n(CSV / JSON)] as ThirdParty
+}
+
+package "Ingestion" #FFF8DC {
+  [Cloud Run\n(API ingest & scrapers)] as CloudRun
+  [Cloud Pub/Sub\n«ingest-events»] as TopicIngest
+  [Cloud Pub/Sub\n«scraper-input»] as TopicInput
+  [Cloud Dataflow\n(Beam batch + streaming)] as Dataflow
+  CloudRun    -[hidden]-> TopicIngest
+  TopicIngest -[hidden]-> TopicInput
+  TopicInput  -[hidden]-> Dataflow
+}
+
+package "Orchestration" #F0FFF0 {
+  [Cloud Composer / Airflow\n(pipeline orchestration)] as Composer
+}
+
+package "Bronze Layer  ·  Raw / Landing" #FFE4B5 {
+  [Cloud Storage\n(raw files: PDF, HTML, DOC)] as GCS
+  [BigQuery\n(raw structured tables)] as BQBronze
+  GCS -[hidden]-> BQBronze
+}
+
+' Source → Cloud Run
+CRM       --> CloudRun
+Finance   --> CloudRun
+Marketing --> CloudRun
+WebScrape --> CloudRun
+ThirdParty--> CloudRun
+
+' Cloud Run publishes raw scraped data
+CloudRun --> TopicIngest : publishes raw events
+
+' Dataflow subscribes and consumes events
+TopicIngest --> Dataflow : delivers messages
+
+' Dataflow publishes input params for scrapers that need them
+Dataflow --> TopicInput : passes input data
+
+' Cloud Run picks up input params (parameterised scrapers)
+TopicInput --> CloudRun : input params for scrapers
+
+' Dataflow → Bronze (sole writer)
+Dataflow --> GCS     : writes raw files
+Dataflow --> BQBronze: writes structured rows
+
+' Dataflow ← Bronze (read-back for deduplication)
+BQBronze --> Dataflow : reads for deduplication
+
+' Composer orchestrates Dataflow (detail in Orchestration section)
+Composer ..> Dataflow : triggers & monitors
+
+@enduml

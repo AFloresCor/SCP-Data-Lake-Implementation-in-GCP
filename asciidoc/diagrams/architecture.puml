@@ -1,0 +1,124 @@
+@startuml architecture
+skinparam dpi 150
+skinparam defaultFontName Helvetica
+skinparam componentStyle rectangle
+skinparam backgroundColor White
+skinparam ArrowColor #555555
+skinparam package {
+  BackgroundColor White
+  BorderColor #999999
+  FontStyle bold
+}
+
+title GCP Data Lake Architecture — Medallion (Bronze / Silver / Gold)
+
+
+' ── SOURCE SYSTEMS ─────────────────────────────────────────
+package "Source Systems" #FFEEDD {
+  [CRM Platform\n(API / CSV)] as CRM
+  [Finance System\n(API / CSV)] as Finance
+  [Marketing Analytics\n(CSV exports)] as Marketing
+  [Web Scraping\n(JSON / HTML)] as WebScrape
+  [Third-Party Feeds\n(CSV / JSON)] as ThirdParty
+}
+
+' ── INGESTION ──────────────────────────────────────────────
+package "Ingestion" #FFF8DC {
+  [Cloud Run\n(API ingest & scrapers)] as CloudRun
+  [Cloud Pub/Sub\n(streaming event bus)] as PubSub
+  [Cloud Dataflow\n(Beam batch + streaming pipelines)] as DataflowIngest
+  CloudRun -[hidden]-> PubSub
+  PubSub -[hidden]-> DataflowIngest
+}
+
+package "Orchestration & Workflow" #F0FFF0 {
+  [Cloud Composer / Airflow\n(pipeline orchestration)] as ComposerOrchestration
+  [Dataform / dbt\n(SQL transforms + tests)] as Dataform
+  ComposerOrchestration -[hidden]-> DataflowIngest
+  ComposerOrchestration -[hidden]-> Dataform
+}
+
+package "Governance & Security" #FFF0F5 {
+  [Cloud IAM\n(access control)] as IAM
+  [VPC Service Controls\n(network perimeter)] as VPC
+  [Cloud Dataplex\n(data catalog & quality)] as DataplexGovernance
+}
+
+Dataform -[hidden]-> IAM
+
+' ── BRONZE LAYER ───────────────────────────────────────────
+package "Bronze Layer  ·  Raw / Landing" #FFE4B5 {
+  [Cloud Storage\n(raw files: PDF, HTML, DOC)] as GCS
+  [BigQuery\n(raw structured tables)] as BQBronze
+}
+
+' ── TRANSFORMATION ───────────────────────────────────────────
+package "Transformation" #E0FFFF {
+  [Cloud Dataflow\n(Beam batch + streaming pipelines)] as DataflowTransform
+  [BigQuery\n(ELT SQL transformations)] as BQTransform
+}
+
+' ── SILVER LAYER ───────────────────────────────────────────
+package "Silver Layer  ·  Cleansed / Conformed" #C6DCF5 {
+  [BigQuery\n(validated & standardized tables)] as BQSilver
+}
+
+' ── GOLD LAYER ─────────────────────────────────────────────
+package "Gold Layer  ·  Curated / Serving" #B8E0B8 {
+  [BigQuery\n(aggregated domain datasets)] as BQGold
+}
+
+BQSilver -[hidden]-> BQGold
+
+' ── CONSUMERS ──────────────────────────────────────────────
+package "Consumers" #D8F0D8 {
+  [Looker / Looker Studio\n(dashboards & reports)] as Looker
+  [Business Analysts\n(self-service SQL)] as Analysts
+  [ML Models\n(training datasets)] as ML
+  [APIs\n(data products)] as APIs
+}
+
+' ── DATA FLOWS ─────────────────────────────────────────────
+
+'Orchestration
+
+
+' Source Systems → Ingestion
+CRM --> CloudRun
+Finance --> CloudRun
+Marketing --> CloudRun
+WebScrape --> CloudRun
+ThirdParty --> CloudRun
+
+' Ingestion → Bronze
+CloudRun --> PubSub
+PubSub --> CloudRun
+DataflowIngest --> PubSub
+PubSub --> DataflowIngest
+
+DataflowIngest --> BQBronze
+DataflowIngest --> GCS
+
+' Bronze → Ingestion
+BQBronze --> DataflowIngest
+GCS --> DataflowIngest
+
+' Bronze → Bronze Transformation
+GCS --> DataflowTransform
+DataflowTransform --> BQBronze
+
+' Bronze → Silver
+BQBronze --> BQTransform
+BQTransform --> BQSilver
+
+' Silver → Gold
+BQSilver --> BQTransform
+BQTransform <--> BQGold
+
+' Gold → Consumers
+BQGold --> Looker
+BQGold --> Analysts
+BQGold --> ML
+BQGold --> APIs
+
+@enduml

@@ -1,0 +1,14 @@
+[[cost-analysis]]
+== Cost Analysis
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+This chapter provides a transparent view of the platform's cloud costs,
+how costs are structured, and how they compare to the previous state.
+The data lake's cost model is *consumption-based* — you pay for what you use,
+and costs scale with business growth rather than being fixed overhead.
+--
+
+IMPORTANT: This chapter contains classified information about the cost structure and financial analysis of the data lake platform. 
+Can't be shared outside of authorized personnel.

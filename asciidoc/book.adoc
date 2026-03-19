@@ -1,0 +1,58 @@
+= GCP Data Lake: Architecture, Implementation & Recommendations
+:doctype: book
+:toc: left
+:toclevels: 3
+:toc-title: Table of Contents
+:sectnums:
+:sectnumlevels: 3
+:icons: font
+:icon-set: fas
+:source-highlighter: rouge
+:rouge-style: github
+:imagesdir: images
+:figure-caption: Figure
+:table-caption: Table
+:listing-caption: Listing
+:xrefstyle: short
+:experimental:
+:pdf-page-size: A4
+:pdf-page-margin: [20mm, 15mm, 20mm, 15mm]
+
+// Document metadata
+:author: Data Engineering Team
+:email: data-engineering@company.com
+:revdate: March 2026
+:revnumber: 1.0
+:revremark: Initial Release
+
+// Custom attributes
+:project-name: GCP Data Lake Initiative
+:company: "Anonymous Company"
+
+'''
+
+include::chapters/00_preface.adoc[]
+
+include::chapters/01_executive-summary.adoc[]
+
+include::chapters/02_project-background.adoc[]
+
+include::chapters/03_solution-overview.adoc[]
+
+include::chapters/04_architecture.adoc[]
+
+include::chapters/05_gcp-services.adoc[]
+
+include::chapters/06_data-lake-design.adoc[]
+
+include::chapters/07_implementation.adoc[]
+
+include::chapters/08_security-compliance.adoc[]
+
+include::chapters/09_recommendations.adoc[]
+
+include::chapters/10_cost-analysis.adoc[]
+
+include::chapters/11_roadmap.adoc[]
+
+include::chapters/12_glossary.adoc[]

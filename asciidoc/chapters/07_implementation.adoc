@@ -1,0 +1,1350 @@
+[[implementation]]
+== Implementation Deep Dive
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+This chapter is aimed at data engineers and cloud architects who need to understand
+the *how* behind the implementation. It walks through a complete, production-grade
+end-to-end pipeline for the Distressed Acquisitions use case — from the first DAG
+that discovers new court cases all the way to the CRM export that enables client
+outreach. It also covers infrastructure setup, pipeline patterns, testing, and
+operational practices. *Non-technical stakeholders can skip this chapter.*
+--
+
+=== Infrastructure as Code
+
+All GCP resources are provisioned using *Terraform*. This means the entire
+infrastructure is version-controlled, reviewable, repeatable, and auditable.
+
+==== Repository Structure
+
+[source]
+----
+infra/
+├── environments/
+│   ├── dev/
+│   │   └── terraform.tfvars
+│   ├── staging/
+│   │   └── terraform.tfvars
+│   └── prod/
+│       └── terraform.tfvars
+├── modules/
+│   ├── storage/          <- GCS buckets, lifecycle rules, CMEK
+│   ├── bigquery/         <- Datasets, tables, authorized views
+│   ├── dataflow/         <- Template staging bucket, service accounts
+│   ├── pubsub/           <- Topics, subscriptions, dead-letter queues
+│   ├── composer/         <- Cloud Composer environment
+│   └── iam/              <- Custom roles, service account bindings
+└── main.tf
+----
+
+==== Key Terraform Patterns
+
+[source,hcl]
+----
+# Bronze bucket with lifecycle management
+resource "google_storage_bucket" "bronze" {
+  name          = "${var.project_id}-bronze-${var.environment}"
+  location      = var.region
+  storage_class = "STANDARD"
+
+  versioning { enabled = true }
+
+  lifecycle_rule {
+    condition { age = 90 }
+    action    { type          = "SetStorageClass"
+                storage_class = "NEARLINE" }
+  }
+
+  lifecycle_rule {
+    condition { age = 2555 }   # 7 years
+    action    { type = "Delete" }
+  }
+
+  encryption {
+    default_kms_key_name = var.kms_key_id
+  }
+}
+----
+
+=== Pipeline Development
+
+==== Technology Choice: Apache Beam on Dataflow
+
+All ETL pipelines are written in *Python* using the Apache Beam SDK, executed on
+the managed Dataflow runner.
+
+*Why Apache Beam?*
+
+* Write once, run on Dataflow (cloud-managed, auto-scaled) or DirectRunner (local testing).
+* Unified API for both batch and streaming — same codebase, different flags.
+* Rich ecosystem of built-in I/O connectors (BigQuery, GCS, Pub/Sub, JDBC).
+
+==== Batch Ingestion Pipeline Pattern
+
+[source,python]
+----
+import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions
+
+def run(source_path: str, dest_table: str, pipeline_args: list):
+    options = PipelineOptions(pipeline_args)
+
+    with beam.Pipeline(options=options) as p:
+        (
+            p
+            | "ReadFromGCS"    >> beam.io.ReadFromParquet(source_path)
+            | "Validate"       >> beam.ParDo(ValidateRow())
+            | "Transform"      >> beam.ParDo(TransformRow())
+            | "WriteToBQ"      >> beam.io.WriteToBigQuery(
+                dest_table,
+                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
+            )
+        )
+
+class ValidateRow(beam.DoFn):
+    def process(self, element):
+        if element.get("id") is None:
+            return   # route to dead-letter — do not yield
+        yield element
+----
+
+=== Orchestration with Cloud Composer
+
+==== DAG Design Principles
+
+[cols="1,3"]
+|===
+|Principle |Implementation
+
+|*One DAG per concern*
+|Each DAG has a single responsibility: discover, ingest, extract, or trigger.
+Limits blast radius — a failing PDF extraction DAG does not block case discovery or
+property ingestion.
+
+|*Sensor before extract*
+|GCS or Pub/Sub sensors wait for source data availability before triggering work.
+
+|*Idempotent tasks*
+|All tasks use date-parameterized paths and `WRITE_APPEND` + deduplication
+(via `QUALIFY ROW_NUMBER()` in Dataform) for safe reruns.
+
+|*Alerting on failure*
+|`on_failure_callback` sends to PagerDuty or Slack for every DAG.
+
+|*No task-level secrets*
+|All credentials fetched from Secret Manager at runtime. Never stored in
+DAG code, Airflow Variables, or environment variables.
+|===
+
+=== Testing Strategy
+
+[cols="1,2,2", options="header"]
+|===
+|Test Type |Scope |Tool
+
+|Unit tests
+|Individual transform functions, ORM extraction regex, validation logic
+|`pytest` + Apache Beam `DirectRunner`
+
+|Integration tests
+|End-to-end pipeline on a small synthetic dataset in the `dev` GCP project
+|Dataflow + pytest + BigQuery test datasets
+
+|Scraper tests
+|Mock HTTP responses for the court records API and property GIS API
+|`pytest` + `responses` library (HTTP mocking)
+
+|Data quality tests
+|Automated checks on Silver and Gold tables post-load
+|Dataplex DQ tasks + Dataform `assertions` blocks
+
+|Contract tests
+|Schema compatibility between Pub/Sub message payload and Bronze table schema
+|Avro schema validation at publish time
+|===
+
+=== Configuration Management
+
+All pipeline configuration is externalized. No hardcoded values in pipeline code.
+
+[cols="2,2", options="header"]
+|===
+|Configuration Type |Storage Location
+
+|Pipeline runtime parameters (project, region, bucket names)
+|Airflow Variables (stored encrypted in Composer's managed Airflow DB)
+
+|Credentials and secrets (API keys, session cookies)
+|Google Secret Manager — accessed at runtime, never stored in DAG or scraper code
+
+|Schema definitions
+|GCS bucket `gs://{project}-config/schemas/`
+
+|Data quality rule definitions
+|YAML files in GCS `gs://{project}-config/dq-rules/` — managed by Dataplex
+
+|Dataform workspace configuration
+|Dataform repository in Cloud Source Repositories (linked to Git)
+|===
+
+=== CI/CD Pipeline
+
+[source]
+----
+[Git Push]
+     |
+     v
+[Cloud Build Trigger]
+     |
+     +-- Lint (flake8, pylint)
+     +-- Unit tests (pytest --runner DirectRunner)
+     +-- Scraper tests (pytest with mock HTTP responses)
+     +-- Dataform compilation check (dataform compile)
+     +-- Terraform plan (infrastructure diff)
+     |
+     v (on merge to main)
+[Cloud Build: Deploy]
+     |
+     +-- Terraform apply (dev → staging → prod with approvals)
+     +-- Dataflow Flex Template build + push to Artifact Registry
+     +-- Cloud Run scraper images build + push to Artifact Registry
+     +-- Airflow DAG sync to Cloud Composer GCS bucket
+     +-- Dataform workspace push to Cloud Source Repositories
+----
+
+=== Operational Runbooks
+
+Runbooks are maintained for the following scenarios:
+
+* *Pipeline Failure & Replay* — Steps to identify the failed task, fix the root
+  cause, and re-run from the correct checkpoint. For the acquisitions pipeline,
+  Bronze tables can be replayed from the original Pub/Sub message replay window
+  (7-day retention) or from the raw GCS PDFs in Bronze.
+
+* *Bad Data Investigation* — How to query the `_quarantine` tables and the
+  `extraction_confidence` field in `bronze_acquisitions.defendants_raw` to identify
+  failed PDF extractions. Low-confidence rows are kept in Bronze for manual review
+  and can be re-extracted after updating the ORM pattern.
+
+* *Schema Change Rollout* — Process for evolving a Bronze or Silver schema without
+  breaking downstream consumers. Dataform SQLX models handle additive changes
+  incrementally; backward-incompatible changes require a migration run with
+  `fully_refresh_incremental_tables_enabled: true`.
+
+* *Cost Spike Investigation* — How to identify the BigQuery slot or Dataflow job
+  responsible for an unexpected cost increase using the GCP Billing console and
+  INFORMATION_SCHEMA.JOBS_BY_PROJECT.
+
+* *Disaster Recovery* — Steps to restore a corrupted Gold table using Silver as
+  the source of re-derivation. All Gold models are fully re-computable from Silver
+  with a single Dataform full refresh. Silver is re-computable from Bronze.
+
+* *PDF Re-extraction* — When the ORM extractor is updated (e.g., improved regex or
+  a new NLP model), historical Bronze PDFs in GCS can be reprocessed by triggering
+  `dag_extract_pdf_to_bronze` with a historical date range and setting Dataform to
+  full refresh for `defendants` and all downstream Gold models.
+
+
+[[distressed-acquisitions-pipeline]]
+=== End-to-End Pipeline: Distressed Acquisitions Example
+
+This section walks through a complete, annotated example of the Distressed
+Acquisitions pipeline. Each case in this domain represents a property whose owner
+has failed to pay property taxes, and against whom a court case has been filed —
+making it a potential acquisition opportunity.
+
+The pipeline automates discovery, data ingestion from multiple scraper sources,
+Bronze-layer extraction of unstructured PDFs, Silver-layer normalization, Gold-layer
+modeling, and CRM delivery.
+
+==== Pipeline Architecture Overview
+
+The full pipeline involves four independent DAGs, two Cloud Run scrapers, one
+Dataflow extraction job, and a Dataform project structured around the
+<<data-modeling-strategy>> described in the previous chapter.
+
+[source]
+----
+┌─────────────────────────────────────────────────────────────────────┐
+│  DAG 1: dag_discover_distressed_cases                               │
+│  Schedule: nightly 02:00 UTC                                        │
+│  → Polls court records API for new cases                            │
+│  → Writes case metadata to bronze_acquisitions.cases_raw            │
+│  → Publishes {case_id, case_name} to Pub/Sub                        │
+│                Topic: distressed-cases-new                          │
+└───────────────────────────┬─────────────────────────────────────────┘
+                            │
+              ┌─────────────┴──────────────┐
+              │  (Both subscribe to topic) │
+              ▼                            ▼
+┌─────────────────────────┐  ┌──────────────────────────────────┐
+│  Cloud Run               │  │  Cloud Run                       │
+│  scraper_property_info   │  │  scraper_defendant_docs          │
+│                          │  │                                  │
+│  Input:  case_name       │  │  Input:  case_name               │
+│  Scrapes GIS/tax API     │  │  Downloads court document PDF    │
+│  Output: structured JSON │  │  Uploads PDF to GCS Bronze       │
+│  Publishes to:           │  │  Publishes {case_id, gcs_path}   │
+│  scraper-property-results│  │  to: scraper-pdf-ready           │
+└────────────┬────────────┘  └──────────────┬───────────────────┘
+             │                              │
+             ▼                              ▼
+┌─────────────────────────┐  ┌──────────────────────────────────┐
+│  DAG 2:                 │  │  DAG 3:                          │
+│  dag_ingest_scraper_    │  │  dag_extract_pdf_to_bronze       │
+│  results                │  │                                  │
+│                         │  │  GCS Sensor: new PDFs detected   │
+│  Pulls Pub/Sub messages │  │  Triggers Dataflow ORM job       │
+│  Writes to BigQuery:    │  │  Writes to BigQuery:             │
+│  · bronze.properties_raw│  │  · bronze.defendants_raw         │
+└────────────┬────────────┘  └──────────────┬───────────────────┘
+             │                              │
+             └──────────────┬───────────────┘
+                            │
+                            ▼  (all 3 bronze tables populated)
+             ┌──────────────────────────────┐
+             │  DAG 4:                      │
+             │  dag_trigger_dataform        │
+             │  Verifies all bronze tables  │
+             │  have today's rows, then     │
+             │  initiates Dataform run      │
+             └──────────────┬───────────────┘
+                            │
+                            ▼
+             ┌──────────────────────────────┐
+             │  Dataform                    │
+             │  Bronze → Silver (3NF)       │
+             │  Silver → Gold Star Schema   │
+             │  Silver → Gold OBT           │
+             └──────────────┬───────────────┘
+                            │
+                            ▼
+             ┌──────────────────────────────┐
+             │  CRM Export                  │
+             │  gold.crm_distressed_export  │
+             │  Synced by Cloud Run CRM job │
+             └──────────────────────────────┘
+----
+
+==== Pub/Sub Topics and Subscriptions
+
+[cols="2,2,2,3", options="header"]
+|===
+|Topic |Publisher |Subscriber(s) |Payload Shape
+
+|`distressed-cases-new`
+|DAG 1
+|Scraper A (push), Scraper B (push)
+|`{"case_id": "TX-2025-042", "case_name": "2025-TX-HARRIS-0042",
+   "court_district": "Harris County", "filing_date": "2025-11-15"}`
+
+|`scraper-property-results`
+|Scraper A (Cloud Run)
+|DAG 2 (pull subscription)
+|`{"case_id": "TX-2025-042", "parcel_id": "1234-AB", "address_raw": "123 Main St, Houston, TX 77002",
+   "assessed_value_raw": "$245,000", "delinquent_amount_raw": "$8,300", ...}`
+
+|`scraper-pdf-ready`
+|Scraper B (Cloud Run)
+|DAG 3 (GCS sensor + Dataflow, subscription for confirmation)
+|`{"case_id": "TX-2025-042",
+   "gcs_path": "gs://mycompany-bronze-prod/acquisitions/defendants-pdfs/.../TX-2025-042.pdf"}`
+|===
+
+==== Step 1 — DAG 1: Case Discovery
+
+DAG 1 runs nightly. It queries the court records source for cases filed since the
+last successful run. For each new case, it publishes a Pub/Sub message *and* writes
+the case metadata directly to `bronze_acquisitions.cases_raw` in the same task — this
+avoids a separate DAG step for case records and keeps the case row as close as possible
+in time to the Pub/Sub message that triggers the scrapers.
+
+[NOTE]
+====
+All credentials (API keys, session tokens) are fetched at runtime from Google Secret
+Manager. No secrets are stored in DAG code, Airflow Variables, or environment variables.
+====
+
+.`dags/dag_discover_distressed_cases.py`
+[source,python]
+----
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.providers.google.cloud.hooks.pubsub import PubSubHook
+from airflow.models import Variable
+from google.cloud import bigquery, secretmanager
+import json, logging
+
+PROJECT_ID     = Variable.get("gcp_project_id")
+BRONZE_DATASET = "bronze_acquisitions"
+PUBSUB_TOPIC   = "distressed-cases-new"
+COURT_API_URL  = Variable.get("court_api_base_url")
+
+
+def _get_secret(project_id: str, secret_id: str) -> str:
+    client = secretmanager.SecretManagerServiceClient()
+    name   = f"projects/{project_id}/secrets/{secret_id}/versions/latest"
+    return client.access_secret_version(name=name).payload.data.decode()
+
+
+def discover_and_publish(execution_date, **context):
+    """
+    Query the court records API for new distressed-acquisition cases.
+    Write raw case rows to BigQuery Bronze and publish each case to Pub/Sub.
+    """
+    import requests
+
+    api_key    = _get_secret(PROJECT_ID, "court-api-key")
+    since_date = (execution_date - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    response = requests.get(
+        f"{COURT_API_URL}/cases",
+        params={"filed_since": since_date, "status": "ACTIVE"},
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    new_cases = response.json().get("cases", [])
+
+    if not new_cases:
+        logging.info("No new distressed cases for %s — nothing to do.", since_date)
+        return
+
+    logging.info("Found %d new cases. Publishing to Pub/Sub and writing to Bronze.", len(new_cases))
+
+    pubsub     = PubSubHook(project_id=PROJECT_ID)
+    bq_client  = bigquery.Client(project=PROJECT_ID)
+    table_ref  = f"{PROJECT_ID}.{BRONZE_DATASET}.cases_raw"
+    bronze_rows = []
+
+    for case in new_cases:
+        # 1. Publish to Pub/Sub — scrapers will pick this up immediately
+        message_body = {
+            "case_id":        case["id"],
+            "case_name":      case["case_number"],
+            "court_district": case["district"],
+            "filing_date":    case["filed_date"],
+        }
+        pubsub.publish(
+            topic=PUBSUB_TOPIC,
+            messages=[{"data": json.dumps(message_body).encode()}],
+        )
+
+        # 2. Write raw case record directly to BigQuery Bronze
+        bronze_rows.append({
+            "case_name":         case["case_number"],
+            "case_id":           case["id"],
+            "court_district":    case["district"],
+            "filing_date":       case["filed_date"],   # raw string, no casting
+            "status":            case["status"],
+            "raw_payload":       json.dumps(case),
+            "_ingested_at":      datetime.utcnow().isoformat() + "Z",
+            "_source":           "court_api_v1",
+            "_pipeline_run_id":  context["run_id"],
+        })
+
+    errors = bq_client.insert_rows_json(table_ref, bronze_rows)
+    if errors:
+        raise RuntimeError(f"BigQuery insert errors: {errors}")
+
+    logging.info(
+        "Wrote %d rows to %s and published %d Pub/Sub messages.",
+        len(bronze_rows), table_ref, len(new_cases),
+    )
+
+
+with DAG(
+    dag_id="dag_discover_distressed_cases",
+    schedule_interval="0 2 * * *",
+    start_date=datetime(2025, 1, 1),
+    catchup=False,
+    default_args={
+        "retries":      3,
+        "retry_delay":  timedelta(minutes=5),
+    },
+    on_failure_callback=lambda ctx: alert_on_failure(ctx),
+    tags=["acquisitions", "bronze", "discovery"],
+) as dag:
+
+    PythonOperator(
+        task_id="discover_and_publish_cases",
+        python_callable=discover_and_publish,
+    )
+----
+
+==== Step 2 — Cloud Run Scrapers
+
+Both scrapers are deployed as independent Cloud Run services. They are registered as
+Pub/Sub push-subscription endpoints on `distressed-cases-new` and execute
+*concurrently and independently* — neither waits for the other.
+
+===== Scraper A: Property Information (Structured JSON Output)
+
+This scraper queries a property tax / GIS API using the case name to retrieve
+structured property records. It publishes results to `scraper-property-results`.
+
+.`scrapers/scraper_property_info/main.py`
+[source,python]
+----
+import base64, json, logging, os
+import requests
+from flask import Flask, request
+from google.cloud import pubsub_v1, secretmanager
+
+app = Flask(__name__)
+
+PROJECT_ID   = os.environ["GCP_PROJECT_ID"]
+OUTPUT_TOPIC = f"projects/{PROJECT_ID}/topics/scraper-property-results"
+PROPERTY_API = os.environ["PROPERTY_API_BASE_URL"]
+
+
+def _get_secret(secret_id: str) -> str:
+    client = secretmanager.SecretManagerServiceClient()
+    name   = f"projects/{PROJECT_ID}/secrets/{secret_id}/versions/latest"
+    return client.access_secret_version(name=name).payload.data.decode()
+
+
+@app.route("/", methods=["POST"])
+def handle_pubsub_push():
+    """Receives a Pub/Sub push message containing the new case details."""
+    envelope = request.get_json(silent=True)
+    if not envelope or "message" not in envelope:
+        return "Bad Request: missing Pub/Sub envelope", 400
+
+    payload   = json.loads(base64.b64decode(envelope["message"]["data"]).decode())
+    case_id   = payload["case_id"]
+    case_name = payload["case_name"]
+
+    logging.info("Scraping property info for case: %s", case_name)
+
+    api_key  = _get_secret("property-api-key")
+    response = requests.get(
+        f"{PROPERTY_API}/search",
+        params={"case_reference": case_name},
+        headers={"X-API-Key": api_key},
+        timeout=30,
+    )
+
+    if response.status_code == 404:
+        logging.warning("No property record found for case %s — skipping.", case_name)
+        return "Not found", 200
+
+    response.raise_for_status()
+    prop = response.json()
+
+    result = {
+        "case_id":               case_id,
+        "parcel_id":             prop.get("parcel_id"),
+        "address_raw":           prop.get("address"),
+        "owner_name_raw":        prop.get("owner_name"),
+        "assessed_value_raw":    str(prop.get("assessed_value", "")),
+        "tax_year_raw":          str(prop.get("tax_year", "")),
+        "delinquent_amount_raw": str(prop.get("delinquent_amount", "")),
+        "latitude":              prop.get("latitude"),
+        "longitude":             prop.get("longitude"),
+        "_source":               "property_gis_api_v2",
+    }
+
+    publisher = pubsub_v1.PublisherClient()
+    publisher.publish(OUTPUT_TOPIC, json.dumps(result).encode())
+    logging.info("Published property result for case %s.", case_id)
+    return "OK", 200
+----
+
+===== Scraper B: Defendant Court Documents (Unstructured PDF Output)
+
+This scraper downloads a PDF court-filing document for the given case from the
+public records portal. It stores the PDF *unmodified* in the GCS Bronze bucket (raw
+preservation) and publishes a path notification to `scraper-pdf-ready` so that DAG 3
+can trigger PDF extraction when it detects new files.
+
+.`scrapers/scraper_defendant_docs/main.py`
+[source,python]
+----
+import base64, json, logging, os
+from datetime import datetime
+import requests
+from flask import Flask, request
+from google.cloud import pubsub_v1, secretmanager, storage
+
+app = Flask(__name__)
+
+PROJECT_ID    = os.environ["GCP_PROJECT_ID"]
+BRONZE_BUCKET = os.environ["BRONZE_BUCKET_NAME"]      # "mycompany-bronze-prod"
+OUTPUT_TOPIC  = f"projects/{PROJECT_ID}/topics/scraper-pdf-ready"
+COURT_DOCS_URL = os.environ["COURT_DOCUMENTS_BASE_URL"]
+
+
+def _get_secret(secret_id: str) -> str:
+    client = secretmanager.SecretManagerServiceClient()
+    name   = f"projects/{PROJECT_ID}/secrets/{secret_id}/versions/latest"
+    return client.access_secret_version(name=name).payload.data.decode()
+
+
+@app.route("/", methods=["POST"])
+def handle_pubsub_push():
+    envelope = request.get_json(silent=True)
+    if not envelope or "message" not in envelope:
+        return "Bad Request", 400
+
+    payload   = json.loads(base64.b64decode(envelope["message"]["data"]).decode())
+    case_id   = payload["case_id"]
+    case_name = payload["case_name"]
+
+    logging.info("Downloading court document for case: %s", case_name)
+
+    session_cookie = _get_secret("court-portal-session-cookie")
+    response = requests.get(
+        f"{COURT_DOCS_URL}/document",
+        params={"case_number": case_name, "doc_type": "FILING_NOTICE"},
+        headers={"Cookie": session_cookie},
+        timeout=60,
+        stream=True,
+    )
+
+    if response.status_code == 404:
+        logging.warning("No document found for case %s — skipping.", case_name)
+        return "Not found", 200
+
+    response.raise_for_status()
+
+    # Build a Hive-partitioned GCS path for the PDF
+    now = datetime.utcnow()
+    gcs_object = (
+        f"acquisitions/defendants-pdfs/"
+        f"year={now.year}/month={now.month:02d}/day={now.day:02d}/"
+        f"{case_id}.pdf"
+    )
+
+    # Upload the raw PDF to GCS Bronze — no transformation, no parsing here
+    gcs_client = storage.Client()
+    bucket     = gcs_client.bucket(BRONZE_BUCKET)
+    blob       = bucket.blob(gcs_object)
+    blob.upload_from_string(response.content, content_type="application/pdf")
+    logging.info("Uploaded PDF to gs://%s/%s", BRONZE_BUCKET, gcs_object)
+
+    # Notify DAG 3 that a new PDF is ready for extraction
+    notification = {
+        "case_id":  case_id,
+        "gcs_path": f"gs://{BRONZE_BUCKET}/{gcs_object}",
+        "_source":  "court_portal_scraper_v1",
+    }
+    publisher = pubsub_v1.PublisherClient()
+    publisher.publish(OUTPUT_TOPIC, json.dumps(notification).encode())
+    logging.info("Published PDF-ready notification for case %s.", case_id)
+    return "OK", 200
+----
+
+==== Step 3 — DAG 2: Bronze Ingestion (Structured Property Data)
+
+DAG 2 runs every 15 minutes to consume structured property results from the
+`scraper-property-results` Pub/Sub subscription and write them to
+`bronze_acquisitions.properties_raw`. Messages are acknowledged *only after* a
+successful BigQuery write to ensure at-least-once delivery semantics.
+
+.`dags/dag_ingest_scraper_results.py`
+[source,python]
+----
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.providers.google.cloud.hooks.pubsub import PubSubHook
+from airflow.models import Variable
+from google.cloud import bigquery
+import json, logging
+
+PROJECT_ID      = Variable.get("gcp_project_id")
+SUBSCRIPTION_ID = "scraper-property-results-sub"
+BRONZE_DATASET  = "bronze_acquisitions"
+MAX_MESSAGES    = 500   # cap per run to bound latency
+
+
+def ingest_property_results(**context):
+    """Pull property scraper results from Pub/Sub and write to BigQuery Bronze."""
+    pubsub    = PubSubHook(project_id=PROJECT_ID)
+    bq_client = bigquery.Client(project=PROJECT_ID)
+    table_ref = f"{PROJECT_ID}.{BRONZE_DATASET}.properties_raw"
+
+    messages = pubsub.pull(
+        subscription=SUBSCRIPTION_ID,
+        max_messages=MAX_MESSAGES,
+        return_immediately=True,
+    )
+
+    if not messages:
+        logging.info("No property results queued — nothing to ingest.")
+        return
+
+    rows    = []
+    ack_ids = []
+
+    for msg in messages:
+        data = json.loads(msg["message"]["data"])
+        rows.append({
+            "case_id":               data.get("case_id"),
+            "parcel_id":             data.get("parcel_id"),
+            "address_raw":           data.get("address_raw"),
+            "owner_name_raw":        data.get("owner_name_raw"),
+            "assessed_value_raw":    data.get("assessed_value_raw"),
+            "tax_year_raw":          data.get("tax_year_raw"),
+            "delinquent_amount_raw": data.get("delinquent_amount_raw"),
+            "latitude":              data.get("latitude"),
+            "longitude":             data.get("longitude"),
+            "raw_payload":           json.dumps(data),
+            "_ingested_at":          datetime.utcnow().isoformat() + "Z",
+            "_source":               data.get("_source", "property_gis_api"),
+            "_pipeline_run_id":      context["run_id"],
+            "_pubsub_message_id":    msg["ackId"],
+        })
+        ack_ids.append(msg["ackId"])
+
+    errors = bq_client.insert_rows_json(table_ref, rows)
+    if errors:
+        raise RuntimeError(f"BigQuery insert errors: {errors}")
+
+    logging.info("Inserted %d property rows into BigQuery Bronze.", len(rows))
+
+    # Acknowledge only after confirmed write — prevents double-ingest on retry
+    pubsub.acknowledge(subscription=SUBSCRIPTION_ID, ack_ids=ack_ids)
+    logging.info("Acknowledged %d Pub/Sub messages.", len(ack_ids))
+
+
+with DAG(
+    dag_id="dag_ingest_scraper_results",
+    schedule_interval="*/15 * * * *",   # every 15 minutes
+    start_date=datetime(2025, 1, 1),
+    catchup=False,
+    default_args={
+        "retries":     2,
+        "retry_delay": timedelta(minutes=2),
+    },
+    on_failure_callback=lambda ctx: alert_on_failure(ctx),
+    tags=["acquisitions", "bronze", "ingestion"],
+) as dag:
+
+    PythonOperator(
+        task_id="ingest_property_results_to_bronze",
+        python_callable=ingest_property_results,
+    )
+----
+
+==== Step 4 — DAG 3: PDF Extraction to Bronze (Unstructured Data)
+
+DAG 3 runs hourly. It uses a GCS sensor to detect new PDFs in the Bronze bucket for
+the current day. When new files are found, it launches a Dataflow job that applies
+an ORM-style approach — PDF parsing, regex-based entity extraction, and confidence
+scoring — to produce structured defendant rows and write them to
+`bronze_acquisitions.defendants_raw`.
+
+[NOTE]
+====
+The extraction result is written to BigQuery Bronze — not Silver. The extracted text
+still carries uncertainty (the `extraction_confidence` score quantifies this). Silver
+is where validated, deduplicated records live. Bronze absorbs the raw extraction
+output, including low-confidence rows that Dataplex DQ will flag.
+====
+
+.`dags/dag_extract_pdf_to_bronze.py`
+[source,python]
+----
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.providers.google.cloud.sensors.gcs import GCSObjectsWithPrefixExistenceSensor
+from airflow.providers.google.cloud.operators.dataflow import DataflowCreatePythonJobOperator
+from airflow.models import Variable
+
+PROJECT_ID    = Variable.get("gcp_project_id")
+REGION        = Variable.get("gcp_region")
+BRONZE_BUCKET = Variable.get("bronze_bucket_name")
+PIPELINE_SA   = Variable.get("dataflow_service_account")
+DATAFLOW_TEMP = Variable.get("dataflow_temp_bucket")
+
+
+def _pdf_prefix(execution_date) -> str:
+    return (
+        f"acquisitions/defendants-pdfs/"
+        f"year={execution_date.year}/"
+        f"month={execution_date.month:02d}/"
+        f"day={execution_date.day:02d}/"
+    )
+
+
+with DAG(
+    dag_id="dag_extract_pdf_to_bronze",
+    schedule_interval="0 * * * *",      # hourly
+    start_date=datetime(2025, 1, 1),
+    catchup=False,
+    default_args={
+        "retries":     2,
+        "retry_delay": timedelta(minutes=10),
+    },
+    on_failure_callback=lambda ctx: alert_on_failure(ctx),
+    tags=["acquisitions", "bronze", "extraction", "pdf"],
+) as dag:
+
+    wait_for_pdfs = GCSObjectsWithPrefixExistenceSensor(
+        task_id="wait_for_defendant_pdfs",
+        bucket=BRONZE_BUCKET,
+        prefix="{{ macros.ds_format(ds, '%Y-%m-%d', "
+               "  'acquisitions/defendants-pdfs/year=%Y/month=%m/day=%d/') }}",
+        timeout=3600,
+        poke_interval=120,
+        mode="reschedule",    # releases the worker slot while waiting
+    )
+
+    extract_pdf_to_bronze = DataflowCreatePythonJobOperator(
+        task_id="extract_defendants_from_pdfs",
+        py_file=f"gs://{BRONZE_BUCKET}/pipelines/extract_defendants_pdf.py",
+        job_name="extract-defendants-pdf-{{ ds_nodash }}",
+        dataflow_default_options={
+            "project":               PROJECT_ID,
+            "region":                REGION,
+            "service_account_email": PIPELINE_SA,
+            "temp_location":         f"gs://{DATAFLOW_TEMP}/tmp",
+        },
+        options={
+            "source_bucket":  BRONZE_BUCKET,
+            "source_prefix":  "{{ execution_date.strftime('acquisitions/defendants-pdfs/year=%Y/month=%m/day=%d/') }}",
+            "dest_project":   PROJECT_ID,
+            "dest_dataset":   "bronze_acquisitions",
+            "dest_table":     "defendants_raw",
+        },
+    )
+
+    wait_for_pdfs >> extract_pdf_to_bronze
+----
+
+The Dataflow job applies an ORM-style mapping: for each PDF, it extracts defendant
+names and roles using regex patterns and writes one row per defendant found.
+
+.`pipelines/extract_defendants_pdf.py`
+[source,python]
+----
+import re, json, io
+from datetime import datetime
+import apache_beam as beam
+from apache_beam.options.pipeline_options import PipelineOptions
+from apache_beam.io.gcp import bigquery
+import pdfplumber
+
+
+class ExtractDefendantsFromPDF(beam.DoFn):
+    """
+    ORM-style extractor. Reads one PDF from GCS, applies regex patterns to
+    locate defendant names and roles, and emits one structured row per defendant.
+    Emits a zero-confidence placeholder if no defendants are found, so downstream
+    knows the PDF was processed and not silently skipped.
+    """
+    DEFENDANT_PATTERN = re.compile(
+        r"(?:Defendant|Respondent|Property Owner)[:\s]+"
+        r"([A-Z][a-zA-Z\-']+(?:\s+[A-Z][a-zA-Z\-']+)+)",
+        re.IGNORECASE,
+    )
+    ROLE_PATTERN = re.compile(
+        r"\b(Defendant|Respondent|Property Owner|Guarantor)\b",
+        re.IGNORECASE,
+    )
+
+    def process(self, gcs_path: str):
+        from google.cloud import storage
+        client      = storage.Client()
+        bucket_name, blob_name = gcs_path.replace("gs://", "").split("/", 1)
+        pdf_bytes   = client.bucket(bucket_name).blob(blob_name).download_as_bytes()
+        case_id     = blob_name.rsplit("/", 1)[-1].replace(".pdf", "")
+
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            full_text = "\n".join(page.extract_text() or "" for page in pdf.pages)
+
+        names = self.DEFENDANT_PATTERN.findall(full_text)
+        roles = self.ROLE_PATTERN.findall(full_text)
+        now   = datetime.utcnow().isoformat() + "Z"
+
+        if not names:
+            yield {
+                "case_id":                case_id,
+                "pdf_gcs_path":           gcs_path,
+                "defendant_name_extracted": None,
+                "defendant_role_extracted": None,
+                "extraction_confidence":  0.0,
+                "raw_text_snippet":       full_text[:500],
+                "_ingested_at":           now,
+                "_extracted_at":          now,
+                "_source_pdf":            gcs_path,
+                "_source":                "pdf_orm_extractor_v1",
+            }
+            return
+
+        for i, name in enumerate(names):
+            role = roles[i].upper() if i < len(roles) else "UNKNOWN"
+            yield {
+                "case_id":                case_id,
+                "pdf_gcs_path":           gcs_path,
+                "defendant_name_extracted": name.strip(),
+                "defendant_role_extracted": role,
+                "extraction_confidence":  0.85,
+                "raw_text_snippet":       full_text[:500],
+                "_ingested_at":           now,
+                "_extracted_at":          now,
+                "_source_pdf":            gcs_path,
+                "_source":                "pdf_orm_extractor_v1",
+            }
+
+
+def run(source_bucket, source_prefix, dest_project, dest_dataset,
+        dest_table, pipeline_args=None):
+    from google.cloud import storage
+    gcs      = storage.Client()
+    blobs    = gcs.list_blobs(source_bucket, prefix=source_prefix)
+    pdf_list = [f"gs://{source_bucket}/{b.name}" for b in blobs
+                if b.name.endswith(".pdf")]
+
+    with beam.Pipeline(options=PipelineOptions(pipeline_args or [])) as p:
+        (
+            p
+            | "CreatePaths"        >> beam.Create(pdf_list)
+            | "ExtractDefendants"  >> beam.ParDo(ExtractDefendantsFromPDF())
+            | "WriteToBronze"      >> beam.io.WriteToBigQuery(
+                f"{dest_project}:{dest_dataset}.{dest_table}",
+                write_disposition=beam.io.BigQueryDisposition.WRITE_APPEND,
+                create_disposition=beam.io.BigQueryDisposition.CREATE_IF_NEEDED,
+            )
+        )
+----
+
+==== Step 5 — Bronze Layer State
+
+After DAGs 1, 2, and 3 have completed in a given pipeline window, the Bronze layer
+holds three independently sourced, append-only tables:
+
+[cols="2,3,2", options="header"]
+|===
+|Table |Content |Written By
+
+|`bronze_acquisitions.cases_raw`
+|One row per newly discovered court case. All fields are raw strings exactly as
+ returned by the court records API.
+|DAG 1 (Python → `bq.insert_rows_json`)
+
+|`bronze_acquisitions.properties_raw`
+|One row per property linked to a case. All values are raw strings (e.g.,
+ `assessed_value_raw = "$245,000"`). No type casting or address parsing.
+|DAG 2 (Pub/Sub pull → `bq.insert_rows_json`)
+
+|`bronze_acquisitions.defendants_raw`
+|One row per extracted defendant per PDF. Contains the GCS path of the source PDF,
+ the extracted name, role, confidence score, and a 500-character text snippet for
+ debugging. Includes low-confidence placeholder rows where extraction found no match.
+|DAG 3 (Dataflow ORM → `beam.io.WriteToBigQuery`)
+|===
+
+==== Step 6 — DAG 4: Trigger Dataform Execution
+
+DAG 4 runs at 05:00 UTC daily — after the Bronze ingestion window closes. Before
+initiating the Dataform run, it verifies that all three Bronze tables have received
+rows ingested today. This guard prevents Dataform from building Silver and Gold from
+incomplete Bronze data (e.g., if the PDF scraper was delayed or failed).
+
+.`dags/dag_trigger_dataform.py`
+[source,python]
+----
+from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.python import PythonOperator
+from airflow.providers.google.cloud.operators.dataform import (
+    DataformCreateCompilationResultOperator,
+    DataformCreateWorkflowInvocationOperator,
+)
+from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
+from airflow.models import Variable
+import logging
+
+PROJECT_ID    = Variable.get("gcp_project_id")
+REGION        = Variable.get("gcp_region")
+DATAFORM_REPO = Variable.get("dataform_repository_id")
+
+
+def verify_bronze_has_today_data(**context):
+    """
+    Guard: confirm all three Bronze tables have rows ingested today.
+    Aborts the DAG if any table is empty, preventing a partial Dataform run.
+    """
+    bq       = BigQueryHook(use_legacy_sql=False)
+    run_date = context["ds"]
+
+    checks = {
+        "cases_raw": (
+            f"SELECT COUNT(*) FROM `{PROJECT_ID}.bronze_acquisitions.cases_raw` "
+            f"WHERE DATE(_ingested_at) = '{run_date}'"
+        ),
+        "properties_raw": (
+            f"SELECT COUNT(*) FROM `{PROJECT_ID}.bronze_acquisitions.properties_raw` "
+            f"WHERE DATE(_ingested_at) = '{run_date}'"
+        ),
+        "defendants_raw": (
+            f"SELECT COUNT(*) FROM `{PROJECT_ID}.bronze_acquisitions.defendants_raw` "
+            f"WHERE DATE(_ingested_at) = '{run_date}'"
+        ),
+    }
+
+    for table, query in checks.items():
+        count = bq.get_first(sql=query)[0]
+        if count == 0:
+            raise ValueError(
+                f"Bronze table '{table}' has no rows for {run_date}. "
+                "Dataform run aborted. Investigate upstream DAGs."
+            )
+        logging.info("Bronze check passed: %s has %d rows for %s.", table, count, run_date)
+
+
+with DAG(
+    dag_id="dag_trigger_dataform",
+    schedule_interval="0 5 * * *",
+    start_date=datetime(2025, 1, 1),
+    catchup=False,
+    default_args={
+        "retries":     1,
+        "retry_delay": timedelta(minutes=10),
+    },
+    on_failure_callback=lambda ctx: alert_on_failure(ctx),
+    tags=["acquisitions", "dataform", "silver", "gold"],
+) as dag:
+
+    verify_bronze = PythonOperator(
+        task_id="verify_all_bronze_tables_populated",
+        python_callable=verify_bronze_has_today_data,
+    )
+
+    compile_dataform = DataformCreateCompilationResultOperator(
+        task_id="compile_dataform_workspace",
+        project_id=PROJECT_ID,
+        region=REGION,
+        repository_id=DATAFORM_REPO,
+        compilation_result={
+            "git_commitish": "main",
+            "workspace":     "production",
+        },
+    )
+
+    run_dataform = DataformCreateWorkflowInvocationOperator(
+        task_id="run_dataform_acquisitions",
+        project_id=PROJECT_ID,
+        region=REGION,
+        repository_id=DATAFORM_REPO,
+        workflow_invocation={
+            "compilation_result": (
+                "{{ task_instance.xcom_pull('compile_dataform_workspace') }}"
+            ),
+            "invocation_config": {
+                "included_tags": ["acquisitions"],
+                "fully_refresh_incremental_tables_enabled": False,
+            },
+        },
+    )
+
+    verify_bronze >> compile_dataform >> run_dataform
+----
+
+==== Step 7 — Dataform: Silver Models (Normalized 3NF)
+
+Dataform manages the Bronze → Silver SQL transformation pipeline inside BigQuery.
+The Silver models clean, validate, cast types, deduplicate records, and tokenize
+PII to produce the normalized 3NF tables described in <<data-modeling-strategy>>.
+
+.`dataform/definitions/silver/cases.sqlx`
+[source,sql]
+----
+config {
+  type: "incremental",
+  schema: "silver_acquisitions",
+  name: "cases",
+  tags: ["acquisitions", "silver"],
+  description: "Deduplicated, type-cast court case records. PK: case_id.",
+}
+
+SELECT
+  case_id,
+  TRIM(case_name)                                    AS case_name,
+  UPPER(TRIM(court_district))                        AS court_district,
+  PARSE_DATE('%m/%d/%Y', filing_date)                AS filing_date,
+  CASE
+    WHEN UPPER(status) IN ('ACTIVE','OPEN','FILED')   THEN 'ACTIVE'
+    WHEN UPPER(status) IN ('SETTLED','CLOSED')        THEN 'SETTLED'
+    WHEN UPPER(status) IN ('DISMISSED','DROPPED')     THEN 'DISMISSED'
+    ELSE 'UNKNOWN'
+  END                                                AS status,
+  _ingested_at                                       AS _bronze_ingested_at,
+  CURRENT_TIMESTAMP()                                AS _created_at,
+  CURRENT_TIMESTAMP()                                AS _updated_at
+
+FROM ${ref("bronze_acquisitions", "cases_raw")}
+WHERE case_id IS NOT NULL
+  AND filing_date IS NOT NULL
+
+${ when(incremental(), `
+  AND DATE(_ingested_at) > (
+    SELECT MAX(DATE(_bronze_ingested_at)) FROM ${self()}
+  )
+`) }
+
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY case_id ORDER BY _ingested_at DESC
+) = 1
+----
+
+.`dataform/definitions/silver/properties.sqlx`
+[source,sql]
+----
+config {
+  type: "incremental",
+  schema: "silver_acquisitions",
+  name: "properties",
+  tags: ["acquisitions", "silver"],
+  description: "Cleaned, type-cast property records. FK: case_id → cases.",
+}
+
+SELECT
+  GENERATE_UUID()                                                      AS property_id,
+  case_id,
+  TRIM(parcel_id)                                                      AS parcel_id,
+  TRIM(address_raw)                                                    AS street_address,
+  REGEXP_EXTRACT(address_raw, r'^(.*?),\s*[A-Z]{2}\s+\d{5}')         AS city,
+  REGEXP_EXTRACT(address_raw, r',\s*([A-Z]{2})\s+\d{5}')             AS state,
+  REGEXP_EXTRACT(address_raw, r'(\d{5})(?:-\d{4})?$')                AS zip_code,
+  TRIM(owner_name_raw)                                                 AS owner_name,
+  SAFE_CAST(
+    REPLACE(REPLACE(assessed_value_raw, '$', ''), ',', '') AS NUMERIC
+  )                                                                    AS assessed_value,
+  SAFE_CAST(TRIM(tax_year_raw) AS INT64)                              AS tax_year,
+  SAFE_CAST(
+    REPLACE(REPLACE(delinquent_amount_raw, '$', ''), ',', '') AS NUMERIC
+  )                                                                    AS delinquent_amount,
+  latitude,
+  longitude,
+  CURRENT_TIMESTAMP()                                                  AS _created_at,
+  CURRENT_TIMESTAMP()                                                  AS _updated_at
+
+FROM ${ref("bronze_acquisitions", "properties_raw")}
+WHERE case_id IS NOT NULL
+
+${ when(incremental(), `
+  AND DATE(_ingested_at) > (SELECT MAX(DATE(_created_at)) FROM ${self()})
+`) }
+
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY case_id, COALESCE(parcel_id, address_raw)
+  ORDER BY _ingested_at DESC
+) = 1
+----
+
+.`dataform/definitions/silver/defendants.sqlx`
+[source,sql]
+----
+config {
+  type: "incremental",
+  schema: "silver_acquisitions",
+  name: "defendants",
+  tags: ["acquisitions", "silver"],
+  description: "Defendant records extracted from Bronze PDFs. PII tokenized. FK: case_id → cases.",
+}
+
+SELECT
+  GENERATE_UUID()                                                     AS defendant_id,
+  case_id,
+  -- SHA-256 token. Raw defendant name is retained in bronze_acquisitions.defendants_raw only.
+  TO_HEX(SHA256(LOWER(TRIM(defendant_name_extracted))))               AS defendant_name_token,
+  COALESCE(UPPER(TRIM(defendant_role_extracted)), 'UNKNOWN')          AS defendant_role,
+  extraction_confidence,
+  _source_pdf,
+  CURRENT_TIMESTAMP()                                                 AS _created_at,
+  CURRENT_TIMESTAMP()                                                 AS _updated_at
+
+FROM ${ref("bronze_acquisitions", "defendants_raw")}
+WHERE case_id IS NOT NULL
+  AND defendant_name_extracted IS NOT NULL
+  AND extraction_confidence >= 0.5   -- exclude low-confidence extractions from Silver
+
+${ when(incremental(), `
+  AND DATE(_ingested_at) > (SELECT MAX(DATE(_created_at)) FROM ${self()})
+`) }
+
+QUALIFY ROW_NUMBER() OVER (
+  PARTITION BY case_id, TO_HEX(SHA256(LOWER(TRIM(defendant_name_extracted))))
+  ORDER BY extraction_confidence DESC
+) = 1
+----
+
+==== Step 8 — Dataform: Gold Models (Star Schema + OBT)
+
+The Gold models read from the Silver 3NF tables and produce two types of output:
+a Star Schema for analytics and a pre-joined One Big Table for the CRM export.
+
+.`dataform/definitions/gold/dim_cases.sqlx`
+[source,sql]
+----
+config {
+  type: "table",
+  schema: "gold_acquisitions",
+  name: "dim_cases",
+  tags: ["acquisitions", "gold", "star-schema"],
+}
+
+SELECT
+  case_id,
+  case_name,
+  court_district,
+  filing_date,
+  status,
+  CASE status
+    WHEN 'ACTIVE'    THEN 'Active — Under Review'
+    WHEN 'SETTLED'   THEN 'Settled'
+    WHEN 'DISMISSED' THEN 'Dismissed — No Action Required'
+    ELSE 'Status Unknown'
+  END AS status_label
+FROM ${ref("silver_acquisitions", "cases")}
+----
+
+.`dataform/definitions/gold/dim_properties.sqlx`
+[source,sql]
+----
+config {
+  type: "table",
+  schema: "gold_acquisitions",
+  name: "dim_properties",
+  tags: ["acquisitions", "gold", "star-schema"],
+}
+
+SELECT
+  property_id,
+  parcel_id,
+  CONCAT(
+    COALESCE(street_address,''), ', ',
+    COALESCE(city,''), ', ',
+    COALESCE(state,''), ' ',
+    COALESCE(zip_code,'')
+  )                AS full_address,
+  city,
+  state,
+  zip_code,
+  assessed_value,
+  latitude,
+  longitude
+FROM ${ref("silver_acquisitions", "properties")}
+----
+
+.`dataform/definitions/gold/fact_distressed_acquisitions.sqlx`
+[source,sql]
+----
+config {
+  type: "incremental",
+  schema: "gold_acquisitions",
+  name: "fact_distressed_acquisitions",
+  tags: ["acquisitions", "gold", "star-schema"],
+  description: "Fact table for distressed acquisition analysis. Grain: case × property × defendant.",
+}
+
+SELECT
+  GENERATE_UUID()                                                AS fact_id,
+  c.case_id,
+  p.property_id,
+  d.defendant_id,
+  p.delinquent_amount,
+  p.assessed_value,
+  p.tax_year,
+  DATE_DIFF(CURRENT_DATE(), c.filing_date, DAY)                 AS days_since_filing,
+  -- Acquisition score: composite heuristic (0–100)
+  -- Higher delinquency ratio + longer time filed = higher score
+  ROUND(LEAST(100,
+    (p.delinquent_amount / NULLIF(p.assessed_value, 0)) * 50
+    + LEAST(50, DATE_DIFF(CURRENT_DATE(), c.filing_date, DAY) / 10)
+  ), 2)                                                         AS acquisition_score,
+  CURRENT_DATE()                                                AS reporting_date,
+  CURRENT_TIMESTAMP()                                           AS _refreshed_at
+
+FROM ${ref("silver_acquisitions", "cases")} c
+JOIN ${ref("silver_acquisitions", "properties")}  p ON p.case_id = c.case_id
+JOIN ${ref("silver_acquisitions", "defendants")}  d ON d.case_id = c.case_id
+WHERE c.status = 'ACTIVE'
+
+${ when(incremental(), `
+  AND c._updated_at > (SELECT MAX(_refreshed_at) FROM ${self()})
+`) }
+----
+
+.`dataform/definitions/gold/crm_distressed_export.sqlx`
+[source,sql]
+----
+config {
+  type: "incremental",
+  schema: "gold_acquisitions",
+  name: "crm_distressed_export",
+  tags: ["acquisitions", "gold", "crm", "obt"],
+  description: "Pre-joined One Big Table for CRM integration. One flat row per case/property/defendant.",
+}
+
+SELECT
+  -- Case
+  c.case_id,
+  c.case_name,
+  c.court_district,
+  c.filing_date,
+  c.status                                                        AS case_status,
+  DATE_DIFF(CURRENT_DATE(), c.filing_date, DAY)                  AS days_since_filing,
+  -- Property
+  p.parcel_id,
+  CONCAT(
+    COALESCE(p.street_address,''), ', ',
+    COALESCE(p.city,''), ', ',
+    COALESCE(p.state,''), ' ',
+    COALESCE(p.zip_code,'')
+  )                                                               AS property_address,
+  p.city                                                         AS property_city,
+  p.state                                                        AS property_state,
+  p.zip_code                                                     AS property_zip,
+  p.assessed_value,
+  p.delinquent_amount,
+  p.tax_year,
+  p.latitude,
+  p.longitude,
+  -- Defendant (PII tokenized — raw name stays in Bronze only)
+  d.defendant_name_token,
+  d.defendant_role,
+  -- Scoring
+  ROUND(LEAST(100,
+    (p.delinquent_amount / NULLIF(p.assessed_value, 0)) * 50
+    + LEAST(50, DATE_DIFF(CURRENT_DATE(), c.filing_date, DAY) / 10)
+  ), 2)                                                          AS acquisition_score,
+  -- CRM sync control
+  CURRENT_TIMESTAMP()                                            AS export_prepared_at,
+  'NEW'                                                          AS crm_sync_status
+
+FROM ${ref("silver_acquisitions", "cases")} c
+JOIN ${ref("silver_acquisitions", "properties")}  p ON p.case_id = c.case_id
+JOIN ${ref("silver_acquisitions", "defendants")}  d ON d.case_id = c.case_id
+WHERE c.status = 'ACTIVE'
+
+${ when(incremental(), `
+  AND c._updated_at > (SELECT MAX(export_prepared_at) FROM ${self()})
+`) }
+----
+
+==== Step 9 — CRM Export
+
+The last step exports `gold_acquisitions.crm_distressed_export` to the CRM system.
+This is implemented as a Cloud Run service (or a fifth lightweight Composer DAG) that:
+
+. Queries rows where `crm_sync_status = 'NEW'`.
+. POSTs each row as a prospect record to the CRM REST API.
+. Updates `crm_sync_status` to `'SYNCED'` on success, or `'FAILED'` on API error,
+  using a BigQuery DML `UPDATE` statement.
+
+[NOTE]
+====
+The CRM export is intentionally decoupled from the Dataform pipeline. Dataform's
+responsibility ends at populating the Gold table. The CRM sync is an operational
+consumer of the Gold OBT — it does not belong inside the transformation pipeline.
+This separation means a CRM API outage never blocks Dataform from running.
+====

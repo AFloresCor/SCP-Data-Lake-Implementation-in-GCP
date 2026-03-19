@@ -1,0 +1,183 @@
+[[project-background]]
+== Project Background
+
+=== Organizational Context
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+This initiative was launched to solve a problem that was limiting the organization's
+ability to grow and compete: data was abundant but nearly impossible to use effectively.
+This chapter describes where things stood before the project, and what drove the decision
+to invest in a centralized data platform.
+--
+
+*{company}* was in a transitional period. New business lines were being launched, whole teams were being restructured, 
+and the leadership recognized that data would be a critical asset for success. One project in particular had the potential to 
+drive significant growth. However, this required the extraction of structured and unstructured data from hundreds of sources, 
+consolidating them, and making them available for internal analytics and, if required, for external client-facing products.
+Such a project would have been impossible with the existing data landscape, which was fragmented, siloed, and lacked governance. 
+
+=== Current State: Before the Data Lake
+
+==== Data Landscape
+
+Prior to this initiative, data was distributed across the following systems:
+
+[cols="2,2,2,2,2", options="header"]
+|===
+|Source System | Source Type | Format Type | Owner | Data Volume (est.)
+
+|CRM Platform
+|Internal
+|API and CSV exports
+|Sales Team
+|_1M records_
+
+|Finance System
+|Internal
+|API and CSV exports
+|Finance Team
+|_5 years of transactions_
+
+|Marketing Analytics
+|Internal
+|CSV exports
+|Marketing Team
+|_Mixed, inconsistent_
+
+|Web Scraping Data
+|External
+|JSON files, HTML
+|Data Engineering Team
+|_no data, new sources anticipated_
+
+|Third-Party Data Feeds
+|External
+|CSV and JSON
+|Data Engineering Team
+|_no data, new sources anticipated_
+|===
+
+==== Key Pain Points
+
+[NOTE]
+====
+The following pain points were identified through stakeholder interviews and a 2-week
+discovery phase conducted in Q1 2024. Each maps to a specific architectural decision
+described in <<architecture>>.
+====
+
+. *No Single Source of Truth*
++
+Each team maintained its own version of core metrics, leading to conflicting numbers in leadership meetings.
+
+. *Manual and Error-Prone Pipelines*
++
+Critical reports relied on manual CSV exports and Gsheets transformations — a process
+vulnerable to human error and impossible to audit.
+
+. *Zero Data Reuse*
++
+Teams independently collected overlapping data, resulting in duplicated effort and
+inconsistent definitions.
+
+. *No Governance Framework*
++
+There was no centralized view of who had access to what data, or any mechanism to
+enforce data retention or privacy policies at scale.
+
+. *Scalability Limits*
++
+Several source systems were approaching their storage and query performance limits
+as data volumes grew.
+
+=== Drivers for Change
+
+The decision to invest in a data lake was driven by a combination of strategic, operational,
+and compliance factors:
+
+[cols="1,3"]
+|===
+|Driver |Description
+
+|*Strategic Growth*
+|Leadership identified data-driven decision-making as a core pillar of the 2024–2025 strategy.
+
+|*Regulatory Compliance*
+|New internal data governance policies required centralized audit trails and access controls.
+
+|*Ambitions*
+|High-impact projects were on hold due to the lack of a reliable data foundation.
+
+|*Engineering Bandwidth*
+|The data engineering team spent the majority of its time on data wrangling rather than
+building revenue-generating features.
+|===
+
+=== Project Scope
+
+==== In Scope
+
+* Ingestion of all priority data sources listed in the current state table above, with a focus on the new sources 
+  anticipated in the next 6–12 months.
+* Design and implementation of a three-layer data lake (Bronze, Silver, Gold).
+* Data cataloguing, lineage tracking, and access governance.
+* Self-service analytics layer for business users.
+* Documentation, runbooks, and knowledge transfer.
+
+==== Out of Scope
+
+* Real-time dashboards (planned for Phase 2).
+* ML model training pipelines (planned for Phase 3).
+* Direct integration with all legacy systems (prioritized subset only).
+
+=== Project Timeline
+
+[cols="1,2,3", options="header"]
+|===
+|Phase |Period |Deliverables
+
+|Discovery & Design
+|Month 1–2
+|Architecture design, tool selection, stakeholder alignment, infrastructure provisioning.
+
+|Core Infrastructure
+|Month 2–3
+|GCP project setup, networking, IAM, Cloud Storage buckets, BigQuery datasets.
+
+|Ingestion Pipelines
+|Month 3–4
+|Dataflow pipelines for each priority source system; Bronze layer populated.
+
+|Transformation Layer
+|Month 4–5
+|Silver and Gold layer transformations; data quality checks; Dataplex catalogue.
+
+|Analytics & Handoff
+|Month 5–6
+|Self-service layer, dashboards, documentation, team training, go-live.
+|===
+
+=== Stakeholders
+
+[cols="2,2,3", options="header"]
+|===
+|Name / Role |Organization |Responsibility
+
+|_Executive Sponsor_
+|Leadership
+|Strategic alignment and budget approval.
+
+|_Data Engineering Lead_
+|Technology
+|Technical design and delivery ownership.
+
+|_Cloud Architect_
+|Technology
+|GCP architecture validation and security review.
+
+|_Business Analyst_
+|Operations
+|Requirements gathering and acceptance testing.
+|===

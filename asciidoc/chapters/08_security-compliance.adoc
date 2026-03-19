@@ -1,0 +1,13 @@
+[[security-compliance]]
+== Security & Compliance
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+Security is not an afterthought — it is embedded into every layer of the data lake.
+This chapter describes the controls in place to protect sensitive data,
+prevent unauthorized access, and meet regulatory requirements.
+--
+
+IMPORTANT: This chapter contains classified information about the security design and controls of the data lake platform. Can't be 
+shared outside of authorized personnel.

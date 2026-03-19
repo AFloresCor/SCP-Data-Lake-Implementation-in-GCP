@@ -1,0 +1,154 @@
+[[solution-overview]]
+== Solution Overview
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+Think of the data lake as a *central library for all company data*. Every data source
+feeds into it, data is cleaned and organized automatically, and anyone with the right
+permissions can query it instantly — without waiting for engineering. Built on Google
+Cloud, it scales automatically and only charges for what you use.
+--
+
+=== What Is a Data Lake?
+
+A **data lake** is a centralized repository that stores structured, semi-structured,
+and unstructured data at any scale. Unlike a traditional data warehouse (which requires
+data to be structured and cleaned before loading), a data lake accepts raw data as-is
+and applies structure only when the data is read or queried.
+
+=== The Three-Layer Architecture (Medallion)
+
+Our data lake is organized into three logical layers, a widely adopted pattern
+known as the *Medallion Architecture*:
+
+[cols="1,1,3"]
+|===
+|Layer |Also Called |Purpose
+
+|icon:circle[] *Bronze*
+|Raw / Landing
+|Stores raw, unmodified data exactly as received from source systems.
+Acts as an immutable archive. Nothing is ever deleted from Bronze.
+
+|icon:adjust[] *Silver*
+|Cleansed / Conformed
+|Data is validated, deduplicated, standardized, and enriched.
+This is the single source of truth for analytical teams.
+
+|icon:circle[role=yellow] *Gold*
+|Curated / Serving
+|Purpose-built, aggregated datasets optimized for specific use cases —
+dashboards, reports, ML training sets, or API serving.
+|===
+
+.Data Flow Through the Layers
+----
+[Source Systems]
+      |
+      v
+  [Bronze Layer]        <- Raw ingestion, no transformation, append-only
+      |
+      v
+  [Silver Layer]        <- Cleansing, validation, deduplication, standardization
+      |
+      v
+  [Gold Layer]          <- Aggregation, business logic, domain-specific datasets
+      |
+      v
+[Consumers: BI Tools, Analysts, ML Models, APIs]
+----
+
+=== Why Google Cloud Platform?
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+Google Cloud was selected because it offers mature serverless data
+processing services and the best integration with our existing GCP footprint, with BigQuery being the gold standard for
+large-scale analytical queries. We can run complex company-wide reports in seconds
+for a fraction of a cent.
+--
+
+GCP was selected after evaluating AWS and Azure against the following criteria:
+
+[cols="2,1,1,1", options="header"]
+|===
+|Criteria |GCP |AWS |Azure
+
+|BigQuery (serverless analytics)
+|icon:check[] Native
+|icon:times[] Redshift (cluster-based)
+|icon:times[] Synapse (complex)
+
+|Fully managed streaming ingest
+|icon:check[] Pub/Sub + Dataflow
+|icon:check[] Kinesis + Glue
+|icon:check[] Event Hubs + ADF
+
+|Data cataloguing & governance
+|icon:check[] Dataplex + Data Catalog
+|icon:check[] Glue Catalog
+|icon:check[] Purview
+
+|Cost model
+|icon:check[] Pay-per-query
+|icon:minus[] Cluster uptime
+|icon:minus[] DTU/vCore
+
+|Existing GCP footprint
+|icon:check[] Yes
+|icon:times[] No
+|icon:times[] No
+|===
+
+The combination of *BigQuery's serverless pricing*, native *Dataplex governance*,
+and the organization's existing GCP presence made GCP the clear choice.
+
+=== Solution Components at a Glance
+
+[cols="2,3,2", options="header"]
+|===
+|Component |Role in the Solution |Layer(s) Involved 
+
+|*Cloud Storage (GCS)*
+|Object storage for unstructured Bronze layer data.
+|Bronze
+
+|*Cloud Pub/Sub*
+|Managed message queue for ingesting scraping events.
+|Bronze
+
+|*Cloud Run*
+|Serverless container execution for web scraping and API-based ingestion.
+|Bronze
+
+|*Cloud Dataflow*
+|Fully managed Apache Beam pipelines for batch and streaming transformations.
+|Silver
+
+|*BigQuery*
+|Serverless analytical data warehouse for storing structured Bronze layer data, but also powering the Silver and 
+  Gold layers and all BI workloads.
+|Bronze, Silver, Gold
+
+|*Dataplex*
+|Unified data governance: cataloguing, lineage, quality checks, and policy enforcement.
+|Silver, Gold
+
+|*Cloud Composer (Airflow)*
+|Workflow orchestration for scheduling batch pipelines.
+|Bronze, Silver
+
+|*Dataform (dbt)*
+|SQL-based transformations and testing framework for data modeling.
+|Silver, Gold
+
+|*IAM & VPC Service Controls*
+|Identity and access management and network controls.
+|Bronze, Silver, Gold
+
+|*Looker Studio / Looker*
+|Business intelligence and self-service reporting for end users.
+|Gold
+|===

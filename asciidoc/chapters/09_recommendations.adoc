@@ -1,0 +1,167 @@
+[[recommendations]]
+== Recommendations
+
+[sidebar]
+.icon:briefcase[] Business Overview
+--
+This chapter captures the most important lessons learned during the project
+and translates them into clear, actionable guidance for teams operating or
+extending the data lake. Both business and technical stakeholders will find
+relevant takeaways here.
+--
+
+=== Architecture Recommendations
+
+[TIP]
+.icon:lightbulb[] Rec 01 — Enforce the Medallion Architecture boundary
+====
+Never allow a consumer to read directly from Bronze. Bronze is an internal implementation
+detail, not a public interface. All cross-team sharing should happen through Silver
+or Gold datasets only. Enforce this with IAM and Dataplex zone access policies.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 02 — Design for replay from Day 1
+====
+Every pipeline should be idempotent and able to reprocess any date range on demand.
+Use date-parameterized paths in GCS and `WRITE_TRUNCATE` for BigQuery loads.
+This is critical for recovering from bugs, schema errors, and source system issues.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 03 — Prefer serverless over always-on clusters
+====
+Avoid maintaining persistent Dataflow clusters or large-scale virtual machines for
+batch workloads. Use Dataflow's auto-scaling and BigQuery's serverless model to align
+cost with actual workload. Idle infrastructure is wasted budget.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 04 — Separate dev, staging, and prod GCP projects
+====
+Use separate GCP projects for each environment rather than using naming conventions
+within a single project. This provides stronger IAM and billing isolation,
+and prevents development jobs from inadvertently reading or writing production data.
+====
+
+=== Data Quality Recommendations
+
+[TIP]
+.icon:lightbulb[] Rec 05 — Define quality rules before the pipeline, not after
+====
+Work with data consumers to define acceptable quality thresholds *before* writing
+the pipeline. "Good enough" for a dashboard may be unacceptable for a financial report.
+Encoding expectations early prevents silent data corruption in production.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 06 — Quarantine, don't discard
+====
+When a record fails validation, route it to a quarantine table with the failure reason
+attached — never silently drop it. Discarded data without a trace is invisible debt
+that surfaces as business-reported "missing data" weeks later.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 07 — Monitor data freshness as a first-class SLA
+====
+A pipeline that completes successfully but 4 hours late can be just as harmful as
+a failure. Define freshness SLAs for every Gold table and alert when they are breached.
+====
+
+=== Governance Recommendations
+
+[TIP]
+.icon:lightbulb[] Rec 08 — Assign a data owner for every dataset
+====
+Every dataset in the catalogue must have a named owner. Ownerless data becomes stale,
+untrustworthy, and ungoverned. The owner is accountable for data quality, access
+approvals, and documentation. Enforce this via Dataplex mandatory tag templates.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 09 — Conduct quarterly access reviews
+====
+Service account and user permissions drift over time. Implement a quarterly review
+process where each team confirms the access still appropriate for each identity.
+Remove any roles that can no longer be justified.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 10 — Document data definitions in the catalogue, not in Slack
+====
+Every important column — especially business metrics like "revenue", "active user",
+"churn rate" — should have a precise definition in Data Catalog, not buried in a
+Slack message or an engineer's head. A single source of truth for definitions
+prevents conflicting numbers in executive reports.
+====
+
+=== Cost Management Recommendations
+
+[TIP]
+.icon:lightbulb[] Rec 11 — Enable BigQuery cost controls immediately
+====
+Set per-user and per-project query cost quotas in BigQuery before giving analysts
+self-service access. Without limits, a single expensive query can consume the
+monthly budget. Use custom quotas and BigQuery Reservations for predictable workloads.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 12 — Always partition and cluster Gold tables
+====
+Unpartitioned BigQuery tables scan all data on every query. For Gold tables with
+millions or billions of rows, partitioning on date and clustering on common filter
+columns reduces query costs by 80–95% for typical dashboard queries.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 13 — Use GCS lifecycle rules from the start
+====
+Configure Cold/Archive storage transitions and retention expiration rules for Bronze
+buckets from Day 1. It is easy to set up early and very costly to ignore.
+Storage costs compound silently as data volumes grow.
+====
+
+=== Operational Recommendations
+
+[TIP]
+.icon:lightbulb[] Rec 14 — Treat pipeline failures as production incidents
+====
+Every pipeline failure that affects a Gold table with active consumers should be
+treated as a production incident — with an SLA for resolution and a post-mortem.
+This cultural shift is as important as the technical architecture.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 15 — Maintain runbooks for all critical failure scenarios
+====
+The data lake will fail in unexpected ways. Having written runbooks for the top 10
+failure modes (pipeline crash, bad data flood, schema change, cost spike) dramatically
+reduces recovery time and removes the single-person dependency risk.
+====
+
+[TIP]
+.icon:lightbulb[] Rec 16 — Invest in developer experience for data consumers
+====
+Self-service analytics only works if the Gold layer is genuinely easy to use.
+Invest time in clear table documentation, example queries, and analyst onboarding.
+A data lake no one can find their way around is not providing business value.
+====
+
+=== Strategic Recommendations
+
+[TIP]
+.icon:lightbulb[] Rec 17 — Plan the ML/AI foundation in Phase 2
+====
+The data lake is the prerequisite for machine learning. With Bronze and Silver in
+place, Phase 2 should focus on an ML feature store, model training pipelines using
+Vertex AI, and the first predictive use case (e.g., churn prediction, demand forecasting).
+====
+
+[TIP]
+.icon:lightbulb[] Rec 18 — Expand the data catalogue to non-engineers
+====
+The greatest long-term value of the data lake comes from empowering business analysts
+and product managers to discover and use data independently. Invest in Looker or
+Looker Studio as a self-service interface backed by well-curated Gold datasets.
+====

@@ -1,0 +1,135 @@
+[[glossary]]
+[glossary]
+== Glossary
+
+This glossary defines key terms used throughout this document.
+Non-technical readers are encouraged to refer here when encountering unfamiliar terms.
+
+Apache Beam::
+An open-source unified programming model for batch and streaming data pipelines.
+Pipelines written in Beam can run on multiple execution engines; we use Google Cloud Dataflow as our runner.
+
+Apache Airflow::
+An open-source workflow orchestration platform. We use the managed version on GCP called Cloud Composer.
+
+BigQuery::
+Google Cloud's fully managed, serverless analytical data warehouse.
+Enables fast SQL queries over petabytes of data with no infrastructure to manage.
+
+Bronze Layer::
+The first layer of the Medallion Architecture. Contains raw, unmodified data exactly as received
+from source systems. Acts as an immutable archive.
+
+Cloud Composer::
+Google Cloud's managed Apache Airflow service. Used to schedule and monitor all batch data pipelines.
+
+Cloud Dataflow::
+Google Cloud's fully managed service for executing Apache Beam pipelines at scale,
+with automatic scaling and no cluster management required.
+
+Cloud KMS (Key Management Service)::
+Google Cloud service for creating and managing cryptographic keys used to encrypt data at rest.
+
+Cloud Pub/Sub::
+Google Cloud's managed publish-subscribe messaging service. Used to ingest real-time event streams.
+
+Cloud Storage (GCS)::
+Google Cloud Storage — scalable, durable object storage.
+Serves as the primary storage layer for Bronze and Silver data.
+
+CMEK (Customer-Managed Encryption Key)::
+An encryption key that is created and controlled by the customer (us), stored in Cloud KMS,
+and used to encrypt data in GCS buckets and BigQuery datasets.
+
+DAG (Directed Acyclic Graph)::
+In the context of Airflow/Composer, a DAG is a pipeline definition — a collection of tasks
+and their dependencies, represented as a directed graph with no loops.
+
+Data Domain::
+A logical grouping of data by business area (e.g., Sales, Finance, Marketing).
+Each domain owns its Silver datasets and is responsible for their quality and governance.
+
+Data Lake::
+A centralized repository that stores structured, semi-structured, and unstructured data
+at any scale. Unlike a data warehouse, a data lake accepts raw data without requiring
+a predefined schema.
+
+Data Lineage::
+The ability to trace data from its origin (source system) through every transformation
+step to its final destination. Used for debugging, compliance, and trust-building.
+
+Data Quality (DQ)::
+A set of automated checks that validate data against defined rules
+(e.g., not null, uniqueness, value ranges) to ensure it is fit for use.
+
+Dataplex::
+A GCP intelligent data fabric service for unified data governance, quality, cataloguing,
+and lineage tracking across GCS and BigQuery.
+
+ETL (Extract, Transform, Load)::
+A data integration pattern where data is extracted from a source, transformed (cleaned, restructured),
+and loaded into a destination system.
+
+ELT (Extract, Load, Transform)::
+A variant of ETL where raw data is first loaded into the destination (e.g., BigQuery or GCS),
+and transformations are applied afterwards using the destination's compute.
+
+Gold Layer::
+The third layer in the Medallion Architecture. Contains purpose-built, aggregated,
+business-ready datasets optimized for specific use cases — dashboards, reports, ML training sets.
+
+IAM (Identity and Access Management)::
+The GCP framework for controlling who (identity) can do what (role/permissions)
+on which resource. Enforces the principle of least privilege.
+
+Idempotent::
+A property of a pipeline or operation: running it multiple times produces the same result as running it once.
+Critical for safe pipeline reruns and recovery.
+
+Looker / Looker Studio::
+Business intelligence and data visualization tools from Google.
+Looker is the enterprise version; Looker Studio (formerly Data Studio) is the free, self-service version.
+
+Medallion Architecture::
+A design pattern for organizing a data lake into three tiers: Bronze (raw), Silver (cleansed), and Gold (curated).
+Each layer has progressively higher data quality and business value.
+
+Parquet::
+An efficient, columnar binary file format widely used for analytical data storage.
+Highly compressed and optimized for the kind of column-selective queries run in analytics.
+
+PII (Personally Identifiable Information)::
+Any data that can be used to identify a specific individual — e.g., name, email address,
+phone number, date of birth, or national ID number.
+
+Schema::
+The formal definition of a data structure — its columns, data types, and constraints.
+
+Serverless::
+A cloud computing model where the cloud provider manages the servers and infrastructure.
+Users only pay for actual resource consumption (compute time, data scanned, messages delivered)
+with no idle costs and no capacity planning required.
+
+Silver Layer::
+The second layer in the Medallion Architecture. Contains validated, deduplicated,
+standardized, and enriched data. Acts as the single source of truth for analytical consumers.
+
+SLA (Service Level Agreement)::
+A committed performance target. In the data lake context: a Gold table's SLA might be
+"data must be refreshed and available by 08:00 UTC each morning".
+
+Streaming Ingestion::
+Continuously ingesting data as it is produced, in near-real-time, as opposed to batch ingestion
+(processing a block of data at a scheduled time).
+
+Terraform::
+An open-source infrastructure-as-code tool used to provision and manage cloud resources
+(GCS buckets, BigQuery datasets, IAM roles, etc.) through version-controlled configuration files.
+
+VPC Service Controls::
+A GCP security feature that creates a service perimeter around GCP resources,
+preventing data exfiltration by restricting which networks can access specific GCP APIs.
+
+Vertex AI::
+Google Cloud's managed machine learning platform, used for training, deploying,
+and monitoring ML models. Built on top of the data lake in Phase 3.

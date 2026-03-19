@@ -1,0 +1,62 @@
+[[preface]]
+[preface]
+== Preface
+
+=== About This Document
+
+IMPORTANT: *DISCLAIMER* Some information has been redacted for confidentiality. Technical details can differ from the real implementation due to various constraints, but the core narrative remains accurate.
+
+This document presents the full story of the *{project-name}* — from the business
+problem at *{company}* that motivated it, through the technical solution designed and built on
+Google Cloud Platform, to the lessons learned and the path forward.
+
+This document is intentionally written for *multiple audiences*:
+
+[cols="1,2,2", options="header"]
+|===
+|Audience |What You Will Find |Recommended Sections
+
+|*Executives & Sponsors*
+|Strategic value, outcomes, cost, and risk
+|Executive Summary, Project Background, Solution Overview, Cost Analysis, Roadmap
+
+|*Project & Product Managers*
+|Scope, timeline, key decisions, trade-offs
+|Project Background, Solution Overview, Architecture, Roadmap
+
+|*Data Analysts & Scientists*
+|Data availability, quality, access patterns, tooling
+|Solution Overview, Data Lake Design, GCP Services, Recommendations
+
+|*Data & Cloud Engineers*
+|Technical architecture, pipelines, configuration, code
+|Architecture, GCP Services, Data Lake Design, Implementation, Security & Compliance
+
+|*Security & Compliance Officers*
+|Data governance, access control, encryption, audit
+|Security & Compliance, Recommendations
+|===
+
+=== How to Read This Document
+
+.icon:briefcase[] *Business Overview* sections provide concise, non-technical summaries.
+You can follow along by reading only those callout boxes if you prefer a high-level read.
+
+.icon:cogs[] *Technical Detail* sections contain in-depth specifics for engineers and architects.
+These sections can be skipped without losing the overall narrative.
+
+.icon:lightbulb[] *Recommendation* sections highlight key decisions and guidance that can be acted upon immediately.
+These are tips and best practices.
+
+=== Document Revision History
+
+[cols="1,1,2,2", options="header"]
+|===
+|Version |Date |Author |Summary of Changes
+
+|1.0
+|March 2026
+|Data Engineering Team
+|Initial release
+
+|===
