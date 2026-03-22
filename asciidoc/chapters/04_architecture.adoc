@@ -14,7 +14,7 @@ cleaned, and becomes available for analysis — all without manual intervention.
 The following diagram illustrates the end-to-end data flow:
 
 .High-Level Architecture Diagram
-plantuml::diagrams/architecture.puml[GCP Data Lake Architecture,align="center",title-align="center",format=svg]
+image::architecture.png[GCP Data Lake Architecture,align="center"]
 
 _[Diagram: Source systems on the top. Ingestion layer via Cloud Run functions and Pub/Sub. Dataflow for ingestion and transformations outside BQ. Bronze layer in GCS and BigQuery. Silver and Gold layers in BigQuery. SQL Transformations inside BQ.  Orchestration via Cloud Composer for ETL pipelines. Orchestration via Dataform for ELT pipelines. Consumers include Looker and APIs. Governance via IAM, VPC, and Dataplex.]_
 
@@ -51,7 +51,7 @@ exclusively through Cloud Pub/Sub; and Dataflow is the sole process that writes 
 Orchestration scheduling and retry logic are covered in the <<orchestration-architecture>> section.
 
 .Ingestion Architecture Diagram
-plantuml::diagrams/ingestion-architecture.puml[GCP Ingestion Architecture,align="center",title-align="center",format=svg]
+image::ingestion-architecture.png[GCP Ingestion Architecture,align="center"]
 
 _[Diagram: Source systems feed Cloud Run scrapers and API clients. Cloud Run and Dataflow communicate
 bidirectionally via two Cloud Pub/Sub topics. Dataflow is the sole writer to the Bronze layer and
@@ -104,7 +104,7 @@ Cloud Composer orchestrates the ETL pipeline; Dataform manages the ELT SQL pipel
 Orchestration scheduling and dependency management are covered in the <<orchestration-architecture>> section.
 
 .Transformation Architecture Diagram
-plantuml::diagrams/transformation-architecture.puml[GCP Transformation Architecture,align="center",title-align="center",format=svg]
+image::transformation-architecture.png[GCP Transformation Architecture,align="center"]
 
 _[Diagram: ETL pipeline — Dataflow reads unstructured files from GCS Bronze and writes extracted
 structured data back into BigQuery Bronze, orchestrated by Cloud Composer. ELT pipeline — BigQuery
@@ -226,7 +226,7 @@ all Dataflow jobs and triggers the Dataform pipeline once Bronze data is ready;
 build Silver and Gold. Both layers support time-based scheduling and event-driven execution.
 
 .Orchestration Architecture Diagram
-plantuml::diagrams/orchestration-architecture.puml[GCP Orchestration Architecture,align="center",title-align="center",format=svg]
+image::orchestration-architecture.png[GCP Orchestration Architecture,align="center"]
 
 _[Diagram: Cron schedules and event triggers fire Cloud Composer DAGs. Composer triggers
 Dataflow jobs for ingestion and unstructured extraction into Bronze. Composer then triggers
